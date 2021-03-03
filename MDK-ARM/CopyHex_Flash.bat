@@ -1,0 +1,1 @@
+copy project\*.hex ..\output(mdk).hex
