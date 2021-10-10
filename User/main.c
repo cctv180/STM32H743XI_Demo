@@ -44,7 +44,7 @@ int main(void)
     while (1)
     {
         HAL_Delay(1000);
-        HC574_TogglePin(LED1);
+        bsp_LedToggle(1);
     }
 }
 
