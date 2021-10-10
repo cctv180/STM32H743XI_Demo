@@ -4,6 +4,7 @@
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
 #删除目标文件(用于打包备份)
+.vscode
 MDK-ARM/Objects
 MDK-ARM/Listings
 MDK-ARM/DebugConfig
