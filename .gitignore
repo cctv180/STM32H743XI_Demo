@@ -21,6 +21,7 @@ MDK-ARM/*.uvgui.*
 EmbeddedProject1/VisualGDB
 EmbeddedProject1/.vs
 EmbeddedProject1/*.vcxproj.user
+EmbeddedProject1
 
 EWARM/bin
 EWARM/obj
