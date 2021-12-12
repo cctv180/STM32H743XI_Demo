@@ -48,14 +48,14 @@
             <NotGenerated>0</NotGenerated>
             <InvalidFlash>1</InvalidFlash>
           </TargetStatus>
-          <OutputDirectory>project\</OutputDirectory>
+          <OutputDirectory>.\project\</OutputDirectory>
           <OutputName>project</OutputName>
           <CreateExecutable>1</CreateExecutable>
           <CreateLib>0</CreateLib>
           <CreateHexFile>1</CreateHexFile>
           <DebugInformation>1</DebugInformation>
           <BrowseInformation>0</BrowseInformation>
-          <ListingPath></ListingPath>
+          <ListingPath>.\project\</ListingPath>
           <HexFormatSelection>1</HexFormatSelection>
           <Merge32K>0</Merge32K>
           <CreateBatchFile>0</CreateBatchFile>
@@ -339,7 +339,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32H743xx</Define>
               <Undefine></Undefine>
-              <IncludePath>../Inc;../Drivers/STM32H7xx_HAL_Driver/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32H7xx/Include;../Drivers/CMSIS/Include;../User;../User/bsp;../User/bsp/inc;../OpenLib/MultiButton</IncludePath>
+              <IncludePath>..\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc\Legacy;..\Drivers\CMSIS\Device\ST\STM32H7xx\Include;..\Drivers\CMSIS\Include;..\User;..\User\bsp;..\User\bsp\inc;..\OpenLib\MultiButton;..\OpenLib\KFIFO</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -720,6 +720,21 @@
               <FileName>bsp_led.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\User\bsp\src\bsp_led.c</FilePath>
+            </File>
+            <File>
+              <FileName>bsp_key.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\bsp\src\bsp_key.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>OpenLib/KFIFO</GroupName>
+          <Files>
+            <File>
+              <FileName>ring_buffer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\OpenLib\KFIFO\ring_buffer.c</FilePath>
             </File>
           </Files>
         </Group>

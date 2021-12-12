@@ -17,6 +17,7 @@ MDK-ARM/*.scvd
 #MDK-ARM/JLink*
 MDK-ARM/JLinkLog.txt
 MDK-ARM/*.uvgui.*
+*.uvoptx
 
 EmbeddedProject1/VisualGDB
 EmbeddedProject1/.vs
