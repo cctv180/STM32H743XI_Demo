@@ -15,7 +15,7 @@
 *********************************************************************************************************
 */
 #include "bsp.h"
-
+#include "perf_counter.h"
 /*
 *********************************************************************************************************
 *                                       函数声明
@@ -78,7 +78,7 @@ void System_Init(void)
 */
 void bsp_Init(void)
 {
-//  bsp_InitDWT();          /* 初始化DWT时钟周期计数器 */
+    init_cycle_counter(TRUE);   /* 初始化perf_counter库 定时器已经初始化 */
     bsp_InitKey();          /* 按键初始化，要放在滴答定时器之前，因为按钮检测是通过滴答定时器扫描 */
 //  bsp_InitUart();        /* 初始化串口 */
     bsp_InitExtIO();    /* 初始化FMC总线74HC574扩展IO. 必须在 bsp_InitLed()前执行 */
@@ -374,10 +374,37 @@ void bsp_Idle(void)
 *********************************************************************************************************
 */
 /* 当前例子使用stm32h7xx_hal.c默认方式实现，未使用下面重定向的函数 */
-#if 0
+#if USE_RTX == 1
 void HAL_Delay(uint32_t Delay)
 {
-    bsp_DelayUS(Delay * 1000);
+    delay_us(Delay * 1000);
+}
+
+HAL_StatusTypeDef HAL_InitTick(uint32_t TickPriority)
+{
+    return HAL_OK;
+}
+
+uint32_t HAL_GetTick(void)
+{
+    static uint32_t ticks = 0U;
+    uint32_t i;
+
+    if (osKernelGetState() == osKernelRunning)
+    {
+        return ((uint32_t)osKernelGetTickCount());
+    }
+
+#if 0
+    /* 如果RTX5还没有运行，采用下面方式 */
+    for (i = (SystemCoreClock >> 14U); i > 0U; i--)
+    {
+        __NOP(); __NOP(); __NOP(); __NOP(); __NOP(); __NOP();
+        __NOP(); __NOP(); __NOP(); __NOP(); __NOP(); __NOP();
+    }
+    return ++ticks;
+#endif
+    return get_system_ticks();
 }
 #endif
 

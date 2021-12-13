@@ -38,7 +38,7 @@
 #define Enable_EventRecorder    0
 
 /* RTOS_RTX开启  1开启 0关闭 */
-#define  USE_RTX                1
+#define  USE_RTX                0
 
 /* CPU空闲时执行的函数 */
 #define CPU_IDLE()          bsp_Idle()
@@ -137,6 +137,7 @@ typedef enum
 #endif
 
 /* Open Software Library */
+#include "perf_counter.h"
 
 /* 通过取消注释或者添加注释的方式控制是否包含底层驱动模块 */
 //#include "bsp_kfifo.h"

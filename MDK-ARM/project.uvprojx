@@ -339,7 +339,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32H743xx</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc\Legacy;..\Drivers\CMSIS\Device\ST\STM32H7xx\Include;..\Drivers\CMSIS\Include;..\User;..\User\bsp;..\User\bsp\inc;..\OpenLib\MultiButton;..\OpenLib\KFIFO</IncludePath>
+              <IncludePath>..\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc\Legacy;..\Drivers\CMSIS\Device\ST\STM32H7xx\Include;..\Drivers\CMSIS\Include;..\User;..\User\bsp;..\User\bsp\inc;..\OpenLib\MultiButton;..\OpenLib\KFIFO;..\OpenLib\perf_counter</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -745,6 +745,26 @@
               <FileName>multi_button.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\OpenLib\MultiButton\multi_button.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>OpenLib/perf_counter</GroupName>
+          <Files>
+            <File>
+              <FileName>perf_counter.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\OpenLib\perf_counter\perf_counter.c</FilePath>
+            </File>
+            <File>
+              <FileName>perf_counter.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\OpenLib\perf_counter\perf_counter.h</FilePath>
+            </File>
+            <File>
+              <FileName>systick_wrapper_ual.s</FileName>
+              <FileType>2</FileType>
+              <FilePath>..\OpenLib\perf_counter\systick_wrapper_ual.s</FilePath>
             </File>
           </Files>
         </Group>

@@ -48,7 +48,7 @@ int main(void)
         extern void bsp_key_test(void);
         bsp_key_test();
 
-        HAL_Delay(5);
+        delay_us(1000 * 5);
     }
 }
 

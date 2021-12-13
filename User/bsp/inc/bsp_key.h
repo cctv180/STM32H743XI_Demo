@@ -33,7 +33,7 @@ typedef enum
 } KEY_ID_E;
 
 /* 按键FIFO用到变量 */
-#define KEY_FIFO_SIZE 10
+#define KEY_FIFO_SIZE 16
 
 /* 按键值宏 */
 #define KEY_NONE                        255                                             /* 无按键 */

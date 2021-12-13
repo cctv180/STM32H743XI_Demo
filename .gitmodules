@@ -3,3 +3,7 @@
 	path = OpenLib/MultiButton
 	url = https://github.com/cctv180/MultiButton
 	branch = master
+[submodule "OpenLib/perf_counter"]
+	path = OpenLib/perf_counter
+	url = https://github.com/GorgonMeducer/perf_counter
+	branch = main
