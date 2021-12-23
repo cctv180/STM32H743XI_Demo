@@ -25,8 +25,8 @@
 #include <stdlib.h>
 
 /* 定义 BSP 版本号 */
-#define STM32_BOARD         "STM32V7"
-#define STM32_BSP_VERSION   "V1.02"
+#define STM32_BOARD "STM32V7"
+#define STM32_BSP_VERSION "V1.02"
 
 /* 开启打印数据 */
 #define BSP_INFO_EN
@@ -35,17 +35,17 @@
 #define DEBUG_MODE
 
 /* 开启调试模式  1开启 0关闭  */
-#define Enable_EventRecorder    0
+#define Enable_EventRecorder 0
 
 /* RTOS_RTX开启  1开启 0关闭 */
-#define  USE_RTX                0
+#define USE_RTX 0
 
 /* CPU空闲时执行的函数 */
-#define CPU_IDLE()          bsp_Idle()
-#define ERROR_HANDLER()        Error_Handler(__FILE__, __LINE__);
+#define CPU_IDLE() bsp_Idle()
+#define ERROR_HANDLER() Error_Handler(__FILE__, __LINE__);
 /* 开关全局中断的宏 */
-#define ENABLE_INT()    __set_PRIMASK(0)    /* 使能全局中断 */
-#define DISABLE_INT()   __set_PRIMASK(1)    /* 禁止全局中断 */
+#define ENABLE_INT() __set_PRIMASK(0)  /* 使能全局中断 */
+#define DISABLE_INT() __set_PRIMASK(1) /* 禁止全局中断 */
 
 typedef enum
 {
@@ -55,16 +55,16 @@ typedef enum
     BSP_ERR_03,
     BSP_ERR_04,
     BSP_ERR_05,
-}BSP_ERR_E;
+} BSP_ERR_E;
 
 /*
 *********************************************************************************************************
- * 以下宏自动处理与提示
+* 以下宏自动处理与提示
 *********************************************************************************************************
- */
+*/
 #ifdef DEBUG_MODE
 //#define BSP_Printf(...) bsp_log_debug(__FILE__, __LINE__, __VA_ARGS__)
-    #define BSP_Printf(...)                         \
+#define BSP_Printf(...)                                 \
     do                                                  \
     {                                                   \
         printf("[D/SYS] (%s:%d) ", __FILE__, __LINE__); \
@@ -73,49 +73,49 @@ typedef enum
     } while (0)
 
 #else
-    #define BSP_Printf(...)
+#define BSP_Printf(...)
 #endif /* DEBUG_MODE END */
 
 #ifdef BSP_INFO_EN
-    //#define BSP_INFO(...)  bsp_log_info(__VA_ARGS__)
-    #define BSP_INFO(...)                               \
-    do                                                  \
-    {                                                   \
-        printf("[I/SYS] ");                             \
-        printf(__VA_ARGS__);                            \
-        printf("\r\n");                                 \
+//#define BSP_INFO(...)  bsp_log_info(__VA_ARGS__)
+#define BSP_INFO(...)        \
+    do                       \
+    {                        \
+        printf("[I/SYS] ");  \
+        printf(__VA_ARGS__); \
+        printf("\r\n");      \
     } while (0)
 
 #else
-    #define BSP_INFO(...)
+#define BSP_INFO(...)
 #endif
 
 #if USE_RTX == 1
 
 #ifndef RTE_CMSIS_RTOS2
- /*  ARM::CMSIS:RTOS2:Keil RTX5:Source:5.5.2 */
-#define RTE_CMSIS_RTOS2                 /* CMSIS-RTOS2 */
-#define RTE_CMSIS_RTOS2_RTX5            /* CMSIS-RTOS2 Keil RTX5 */
-#define RTE_CMSIS_RTOS2_RTX5_SOURCE     /* CMSIS-RTOS2 Keil RTX5 Source */
+/*  ARM::CMSIS:RTOS2:Keil RTX5:Source:5.5.2 */
+#define RTE_CMSIS_RTOS2             /* CMSIS-RTOS2 */
+#define RTE_CMSIS_RTOS2_RTX5        /* CMSIS-RTOS2 Keil RTX5 */
+#define RTE_CMSIS_RTOS2_RTX5_SOURCE /* CMSIS-RTOS2 Keil RTX5 Source */
 #endif
 
 #endif
 
 /* 检查是否定义了开发板型号 */
-#if !defined (STM32_BOARD)
-    #error "Please define the board model : STM32_BOARD"
+#if !defined(STM32_BOARD)
+#error "Please define the board model : STM32_BOARD"
 #endif
 
 /* 这个宏仅用于调试阶段排错printf */
 #if Enable_EventRecorder == 1
-    #include "EventRecorder.h"
+#include "EventRecorder.h"
 #endif
 
 /* printf 二进制格式输出 宏 */
 #define BYTE_TO_BINARY_PATTERN "0b%c%c%c%c%c%c%c%c"
 /* printf 二进制格式输出 宏 */
-#define BYTE_TO_BINARY(byte) \
-        (byte & 0x80 ? '1' : '0'), \
+#define BYTE_TO_BINARY(byte)       \
+    (byte & 0x80 ? '1' : '0'),     \
         (byte & 0x40 ? '1' : '0'), \
         (byte & 0x20 ? '1' : '0'), \
         (byte & 0x10 ? '1' : '0'), \
@@ -125,15 +125,15 @@ typedef enum
         (byte & 0x01 ? '1' : '0')
 
 #ifndef TRUE
-    #define TRUE  1
+#define TRUE 1
 #endif
 
 #ifndef FALSE
-    #define FALSE 0
+#define FALSE 0
 #endif
 
 #ifndef NULL
-    #define NULL 0
+#define NULL 0
 #endif
 
 /* Open Software Library */
