@@ -79,7 +79,8 @@ void bsp_Init(void)
 {
     init_cycle_counter(TRUE);   /* 初始化perf_counter库 定时器已经初始化 */
     bsp_InitKey();              /* 按键初始化，要放在滴答定时器之前，因为按钮检测是通过滴答定时器扫描 */
-    //bsp_InitUart();             /* 初始化串口 */
+    bsp_Init_dma();             /* 初始化DMA */
+    bsp_InitUart();             /* 初始化串口 */
     bsp_InitExtIO();            /* 初始化FMC总线74HC574扩展IO. 必须在 bsp_InitLed()前执行 */
     bsp_InitLed();              /* 初始化LED */
     //  bsp_InitTimer();        /* 初始化滴答定时器 */
@@ -404,6 +405,14 @@ uint32_t HAL_GetTick(void)
     return ++ticks;
 #endif
     return get_system_ticks();
+}
+#else
+/**
+  * @brief This function handles System tick timer.
+  */
+void SysTick_Handler(void)
+{
+    HAL_IncTick();
 }
 #endif
 
