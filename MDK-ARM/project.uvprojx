@@ -1722,6 +1722,11 @@
               <FilePath>..\User\bsp\bsp.h</FilePath>
             </File>
             <File>
+              <FileName>bsp_user_lib.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\bsp\src\bsp_user_lib.c</FilePath>
+            </File>
+            <File>
               <FileName>bsp_fmc_io.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\User\bsp\src\bsp_fmc_io.c</FilePath>

@@ -30,6 +30,13 @@
 
 /* External variables --------------------------------------------------------*/
 
+/* Private define ------------------------------------------------------------*/
+#define LPUART_BRR_MIN 0x00000300U /* LPUART BRR minimum authorized value */
+#define LPUART_BRR_MAX 0x000FFFFFU /* LPUART BRR maximum authorized value */
+
+#define UART_BRR_MIN 0x10U       /* UART BRR minimum authorized value */
+#define UART_BRR_MAX 0x0000FFFFU /* UART BRR maximum authorized value */
+
 #define DMA_TX_BUF_SIZE 16
 
 static void UartVarInit(void);
@@ -941,25 +948,215 @@ void comClearRxFifo(COM_PORT_E _ucPort)
 *   形    参: _ucPort: 端口号(COM1 - COM8)
 *             _BaudRate: 波特率，8倍过采样  波特率.0-12.5Mbps
 *                               16倍过采样 波特率.0-6.25Mbps
-*   返 回 值: 无
+*   返 回 值: ret
 *********************************************************************************************************
 */
-void comSetBaud(COM_PORT_E _ucPort, uint32_t _BaudRate)
+int comSetBaud(COM_PORT_E _ucPort, uint32_t _BaudRate)
 {
-    USART_TypeDef *USARTx;
-
     UART_T *pUart;
+    UART_HandleTypeDef *huart;
+
+    uint16_t brrtemp;
+    UART_ClockSourceTypeDef clocksource;
+    uint32_t usartdiv;
+    HAL_StatusTypeDef ret = HAL_OK;
+    uint32_t lpuart_ker_ck_pres;
+    PLL2_ClocksTypeDef pll2_clocks;
+    PLL3_ClocksTypeDef pll3_clocks;
+    uint32_t pclk;
 
     pUart = ComToUart(_ucPort);
     if (pUart == 0)
     {
-        return;
+        return -1;
     }
-    pUart->huart->Init.BaudRate = _BaudRate;
-    if (HAL_UART_Init(pUart->huart) != HAL_OK)
+
+    huart = pUart->huart;
+    huart->Init.BaudRate = _BaudRate;
+    /*     参考 stm32xx_hal_uart.c --> UART_SetConfig() 中寄存器 BRR 配置部分。   */
+    /*-------------------------- USART BRR Configuration -----------------------*/
+    UART_GETCLOCKSOURCE(huart, clocksource);
+
+    /* Check LPUART instance */
+    if (UART_INSTANCE_LOWPOWER(huart))
     {
-        ERROR_HANDLER();
+        /* Retrieve frequency clock */
+        switch (clocksource)
+        {
+        case UART_CLOCKSOURCE_D3PCLK1:
+            pclk = HAL_RCCEx_GetD3PCLK1Freq();
+            break;
+        case UART_CLOCKSOURCE_PLL2:
+            HAL_RCCEx_GetPLL2ClockFreq(&pll2_clocks);
+            pclk = pll2_clocks.PLL2_Q_Frequency;
+            break;
+        case UART_CLOCKSOURCE_PLL3:
+            HAL_RCCEx_GetPLL3ClockFreq(&pll3_clocks);
+            pclk = pll3_clocks.PLL3_Q_Frequency;
+            break;
+        case UART_CLOCKSOURCE_HSI:
+            if (__HAL_RCC_GET_FLAG(RCC_FLAG_HSIDIV) != 0U)
+            {
+                pclk = (uint32_t)(HSI_VALUE >> (__HAL_RCC_GET_HSI_DIVIDER() >> 3U));
+            }
+            else
+            {
+                pclk = (uint32_t)HSI_VALUE;
+            }
+            break;
+        case UART_CLOCKSOURCE_CSI:
+            pclk = (uint32_t)CSI_VALUE;
+            break;
+        case UART_CLOCKSOURCE_LSE:
+            pclk = (uint32_t)LSE_VALUE;
+            break;
+        default:
+            pclk = 0U;
+            ret = HAL_ERROR;
+            break;
+        }
+
+        /* If proper clock source reported */
+        if (pclk != 0U)
+        {
+            /* Compute clock after Prescaler */
+            lpuart_ker_ck_pres = (pclk / UARTPrescTable[huart->Init.ClockPrescaler]);
+
+            /* Ensure that Frequency clock is in the range [3 * baudrate, 4096 * baudrate] */
+            if ((lpuart_ker_ck_pres < (3U * huart->Init.BaudRate)) ||
+                (lpuart_ker_ck_pres > (4096U * huart->Init.BaudRate)))
+            {
+                ret = HAL_ERROR;
+            }
+            else
+            {
+                /* Check computed UsartDiv value is in allocated range
+                   (it is forbidden to write values lower than 0x300 in the LPUART_BRR register) */
+                usartdiv = (uint32_t)(UART_DIV_LPUART(pclk, huart->Init.BaudRate, huart->Init.ClockPrescaler));
+                if ((usartdiv >= LPUART_BRR_MIN) && (usartdiv <= LPUART_BRR_MAX))
+                {
+                    huart->Instance->BRR = usartdiv;
+                }
+                else
+                {
+                    ret = HAL_ERROR;
+                }
+            } /* if ( (lpuart_ker_ck_pres < (3 * huart->Init.BaudRate) ) ||
+                      (lpuart_ker_ck_pres > (4096 * huart->Init.BaudRate) )) */
+        }     /* if (pclk != 0) */
     }
+    /* Check UART Over Sampling to set Baud Rate Register */
+    else if (huart->Init.OverSampling == UART_OVERSAMPLING_8)
+    {
+        switch (clocksource)
+        {
+        case UART_CLOCKSOURCE_D2PCLK1:
+            pclk = HAL_RCC_GetPCLK1Freq();
+            break;
+        case UART_CLOCKSOURCE_D2PCLK2:
+            pclk = HAL_RCC_GetPCLK2Freq();
+            break;
+        case UART_CLOCKSOURCE_PLL2:
+            HAL_RCCEx_GetPLL2ClockFreq(&pll2_clocks);
+            pclk = pll2_clocks.PLL2_Q_Frequency;
+            break;
+        case UART_CLOCKSOURCE_PLL3:
+            HAL_RCCEx_GetPLL3ClockFreq(&pll3_clocks);
+            pclk = pll3_clocks.PLL3_Q_Frequency;
+            break;
+        case UART_CLOCKSOURCE_HSI:
+            if (__HAL_RCC_GET_FLAG(RCC_FLAG_HSIDIV) != 0U)
+            {
+                pclk = (uint32_t)(HSI_VALUE >> (__HAL_RCC_GET_HSI_DIVIDER() >> 3U));
+            }
+            else
+            {
+                pclk = (uint32_t)HSI_VALUE;
+            }
+            break;
+        case UART_CLOCKSOURCE_CSI:
+            pclk = (uint32_t)CSI_VALUE;
+            break;
+        case UART_CLOCKSOURCE_LSE:
+            pclk = (uint32_t)LSE_VALUE;
+            break;
+        default:
+            pclk = 0U;
+            ret = HAL_ERROR;
+            break;
+        }
+
+        /* USARTDIV must be greater than or equal to 0d16 */
+        if (pclk != 0U)
+        {
+            usartdiv = (uint32_t)(UART_DIV_SAMPLING8(pclk, huart->Init.BaudRate, huart->Init.ClockPrescaler));
+            if ((usartdiv >= UART_BRR_MIN) && (usartdiv <= UART_BRR_MAX))
+            {
+                brrtemp = (uint16_t)(usartdiv & 0xFFF0U);
+                brrtemp |= (uint16_t)((usartdiv & (uint16_t)0x000FU) >> 1U);
+                huart->Instance->BRR = brrtemp;
+            }
+            else
+            {
+                ret = HAL_ERROR;
+            }
+        }
+    }
+    else
+    {
+        switch (clocksource)
+        {
+        case UART_CLOCKSOURCE_D2PCLK1:
+            pclk = HAL_RCC_GetPCLK1Freq();
+            break;
+        case UART_CLOCKSOURCE_D2PCLK2:
+            pclk = HAL_RCC_GetPCLK2Freq();
+            break;
+        case UART_CLOCKSOURCE_PLL2:
+            HAL_RCCEx_GetPLL2ClockFreq(&pll2_clocks);
+            pclk = pll2_clocks.PLL2_Q_Frequency;
+            break;
+        case UART_CLOCKSOURCE_PLL3:
+            HAL_RCCEx_GetPLL3ClockFreq(&pll3_clocks);
+            pclk = pll3_clocks.PLL3_Q_Frequency;
+            break;
+        case UART_CLOCKSOURCE_HSI:
+            if (__HAL_RCC_GET_FLAG(RCC_FLAG_HSIDIV) != 0U)
+            {
+                pclk = (uint32_t)(HSI_VALUE >> (__HAL_RCC_GET_HSI_DIVIDER() >> 3U));
+            }
+            else
+            {
+                pclk = (uint32_t)HSI_VALUE;
+            }
+            break;
+        case UART_CLOCKSOURCE_CSI:
+            pclk = (uint32_t)CSI_VALUE;
+            break;
+        case UART_CLOCKSOURCE_LSE:
+            pclk = (uint32_t)LSE_VALUE;
+            break;
+        default:
+            pclk = 0U;
+            ret = HAL_ERROR;
+            break;
+        }
+
+        if (pclk != 0U)
+        {
+            /* USARTDIV must be greater than or equal to 0d16 */
+            usartdiv = (uint32_t)(UART_DIV_SAMPLING16(pclk, huart->Init.BaudRate, huart->Init.ClockPrescaler));
+            if ((usartdiv >= UART_BRR_MIN) && (usartdiv <= UART_BRR_MAX))
+            {
+                huart->Instance->BRR = (uint16_t)usartdiv;
+            }
+            else
+            {
+                ret = HAL_ERROR;
+            }
+        }
+    }
+    return ret;
 }
 
 /*
@@ -1110,6 +1307,190 @@ void bsp_InitUart(void)
     HAL_UARTEx_ReceiveToIdle_DMA(&huart8, s_rx_buf8, roundup_pow_of_two(UART8_RX_BUF_SIZE)); /* 启动DMA */
 #endif
 }
+
+#ifdef DEBUG_MODE
+static int com_uart(int argc, char *argv[])
+{
+#define __is_print(ch) ((unsigned int)((ch) - ' ') < 127u - ' ')
+#define HEXDUMP_WIDTH 16
+
+#define CMD_PROBE_INDEX 0
+#define CMD_READ_INDEX 1
+#define CMD_WRITE_INDEX 2
+#define CMD_CLEAR_INDEX 3
+#define CMD_BAUD_INDEX 4
+
+    static int8_t com_num = 0;
+
+    int result = 0;
+    uint16_t length = 0;
+    uint16_t size;
+    uint8_t *buff = NULL;
+    uint8_t data = 0;
+    size_t i = 0, j = 0;
+
+    const char *help_info[] =
+        {
+            [CMD_PROBE_INDEX] = "com probe [part_num] Select Uart 0 - 7",
+            [CMD_READ_INDEX] = "com read mode size",
+            [CMD_WRITE_INDEX] = "com write xxx",
+            [CMD_CLEAR_INDEX] = "com clear",
+            [CMD_BAUD_INDEX] = "com baud XXX",
+        };
+
+    // printf("\r\nargc = %d\r\n\r\n", argc);
+
+    if (argc < 2)
+    {
+        printf("Usage:\r\n");
+        for (i = 0; i < sizeof(help_info) / sizeof(char *); i++)
+        {
+            printf("%s\r\n", help_info[i]);
+        }
+        printf("\r\n");
+    }
+    else
+    {
+        const char *operator= argv[1];
+        if (!strcmp(operator, "probe")) //选择串口号
+        {
+            com_num = atoi(argv[2]);
+            if (com_num <= 0 || com_num > 8)
+            {
+                com_num = -1;
+                printf("COM Select Error(Range 1 - 8).\r\n");
+            }
+            else
+            {
+                printf("COM Select %d OK\r\n", com_num);
+                com_num--; //实际端口号
+            }
+        }
+        else if (!strcmp(operator, "read"))
+        {
+            if (argc >= 2 && !strcmp(argv[2], "len"))
+            {
+                length = comGetLen((COM_PORT_E)com_num);
+                printf("length = %d\r\n", length);
+            }
+            else if (argc >= 2 && !strcmp(argv[2], "char"))
+            {
+
+                if (comGetChar((COM_PORT_E)com_num, &data))
+                {
+                    printf("read char = 0x%02X(%c)\r\n", data, data);
+                }
+                else
+                {
+                    printf("read char NULL\r\n");
+                }
+            }
+            else if (argc >= 2 && !strcmp(argv[2], "buff"))
+            {
+                if (argc >= 4)
+                {
+
+                    length = atoi(argv[3]);
+                    buff = malloc(length);
+                    if (buff)
+                    {
+                        size = comGetBuf((COM_PORT_E)com_num, buff, length);
+
+                        printf("Read buff success. size = %d. The data is:\r\n", size);
+                        printf("Offset (h) 00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F\r\n");
+                        for (i = 0; i < size; i += HEXDUMP_WIDTH)
+                        {
+                            printf("[%08X] ", i);
+                            /* dump hex */
+                            for (j = 0; j < HEXDUMP_WIDTH; j++)
+                            {
+                                if (i + j < size)
+                                {
+                                    printf("%02X ", buff[i + j]);
+                                }
+                                else
+                                {
+                                    printf("   ");
+                                }
+                            }
+                            /* dump char for hex */
+                            for (j = 0; j < HEXDUMP_WIDTH; j++)
+                            {
+                                if (i + j < size)
+                                {
+                                    printf("%c", __is_print(buff[i + j]) ? buff[i + j] : '.');
+                                }
+                            }
+                            printf("\r\n");
+                        }
+                        printf("\r\n");
+                    }
+                    else
+                    {
+                        printf("Low memory!\r\n");
+                    }
+                }
+                else
+                {
+                    printf("read parameter Error.\r\ncom buff [len]\r\n");
+                }
+            }
+            else
+            {
+                printf("read parameter Error.\r\ncom read [len | char | buff]\r\n");
+                result = -1;
+            }
+            printf("Select COM%d Read\r\n", com_num + 1);
+        }
+        else if (!strcmp(operator, "write"))
+        {
+            if (argc >= 3)
+            {
+                comSendBuf((COM_PORT_E)com_num, (uint8_t *)argv[2], str_len(argv[2]));
+            }
+            else
+            {
+                printf("read parameter Error.\r\ncom write ...\r\n");
+                result = -1;
+            }
+        }
+        else if (!strcmp(operator, "clear"))
+        {
+            comClearRxFifo((COM_PORT_E)com_num);
+            comClearTxFifo((COM_PORT_E)com_num);
+        }
+        else if (!strcmp(operator, "baud"))
+        {
+            uint32_t baud;
+            if (argc >= 3)
+            {
+                baud = strtol(argv[2], NULL, 0);
+                if (baud)
+                {
+                    return comSetBaud((COM_PORT_E)com_num, baud);
+                }
+                else
+                {
+                    printf("com baud error = 0\r\n");
+                }
+            }
+            else
+            {
+                printf("read parameter Error.\r\ncom baud xx\r\n");
+                result = -1;
+            }
+        }
+    }
+
+    if (buff != NULL)
+    {
+        free(buff);
+    }
+    return result;
+}
+//导出到命令列表里
+SHELL_EXPORT_CMD(SHELL_CMD_PERMISSION(0) | SHELL_CMD_TYPE(SHELL_TYPE_CMD_MAIN), com, com_uart, com find[dev | part]);
+#endif // #ifdef DEBUG_MODE
 
 /*
 *********************************************************************************************************

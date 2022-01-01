@@ -166,7 +166,7 @@ uint8_t comGetChar(COM_PORT_E _ucPort, uint8_t *_pByte);
 uint16_t comGetBuf(COM_PORT_E _ucPort, uint8_t *_pByte, uint16_t _usLen);
 void comClearTxFifo(COM_PORT_E _ucPort);
 void comClearRxFifo(COM_PORT_E _ucPort);
-void comSetBaud(COM_PORT_E _ucPort, uint32_t _BaudRate);
+int comSetBaud(COM_PORT_E _ucPort, uint32_t _BaudRate);
 uint16_t comGetLen(COM_PORT_E _ucPort);
 
 #endif
