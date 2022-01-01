@@ -11,3 +11,7 @@
 	path = OpenLib/letter_shell/Lib
 	url = https://github.com/NevermindZZT/letter-shell
 	branch = master
+[submodule "OpenLib/MultiTimer/Lib"]
+	path = OpenLib/MultiTimer/Lib
+	url = https://github.com/0x1abin/MultiTimer
+	branch = development

@@ -40,6 +40,10 @@
 /* RTOS_RTX开启  1开启 0关闭 */
 #define USE_RTX 0
 
+/* 获取系统时间 */
+#define get_system_ms() (get_system_ticks() / (SystemCoreClock / 1000ul))
+#define get_system_us() (get_system_ticks() / (SystemCoreClock / 1000000ul))
+
 /* CPU空闲时执行的函数 */
 #define CPU_IDLE() bsp_Idle()
 #define ERROR_HANDLER() Error_Handler(__FILE__, __LINE__);
@@ -142,6 +146,8 @@ typedef enum
 #include "multi_button.h"
 #include "shell.h"
 #include "shell_port.h"
+#include "MultiTimer.h"
+#include "timer_port.h"
 
 /* 通过取消注释或者添加注释的方式控制是否包含底层驱动模块 */
 #include "bsp_dma.h"

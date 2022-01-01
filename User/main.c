@@ -41,15 +41,14 @@ int main(void)
     /* HAL库，MPU，Cache，时钟等系统初始化 */
     System_Init();
     bsp_Init();
+
     while (1)
     {
-        bsp_KeyScan5ms();
+        MultiTimerYield(); //执行定时器调度
+        shellTask(&shell); // shell任务
+
         extern void bsp_key_test(void);
         bsp_key_test();
-
-        delay_us(1000 * 5);
-
-        shellTask(&shell);
     }
 }
 

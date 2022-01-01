@@ -339,7 +339,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32H743xx</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc\Legacy;..\Drivers\CMSIS\Device\ST\STM32H7xx\Include;..\Drivers\CMSIS\Include;..\User;..\User\bsp;..\User\bsp\inc;..\OpenLib\MultiButton;..\OpenLib\KFIFO;..\OpenLib\perf_counter;..\OpenLib\letter_shell;..\OpenLib\letter_shell\Lib\src</IncludePath>
+              <IncludePath>..\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc\Legacy;..\Drivers\CMSIS\Device\ST\STM32H7xx\Include;..\Drivers\CMSIS\Include;..\User;..\User\bsp;..\User\bsp\inc;..\OpenLib\MultiButton;..\OpenLib\KFIFO;..\OpenLib\perf_counter;..\OpenLib\letter_shell;..\OpenLib\letter_shell\Lib\src;..\OpenLib\MultiTimer;..\OpenLib\MultiTimer\Lib</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -1770,6 +1770,26 @@
               <FileName>multi_button.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\OpenLib\MultiButton\multi_button.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>OpenLib/MultiTimer/src</GroupName>
+          <Files>
+            <File>
+              <FileName>MultiTimer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\OpenLib\MultiTimer\Lib\MultiTimer.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>OpenLib/MultiTimer/port</GroupName>
+          <Files>
+            <File>
+              <FileName>timer_port.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\OpenLib\MultiTimer\timer_port.c</FilePath>
             </File>
           </Files>
         </Group>

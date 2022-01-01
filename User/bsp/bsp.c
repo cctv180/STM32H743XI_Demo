@@ -84,7 +84,7 @@ void bsp_Init(void)
     userInitShell();            /* 初始化shell */
     bsp_InitExtIO();            /* 初始化FMC总线74HC574扩展IO. 必须在 bsp_InitLed()前执行 */
     bsp_InitLed();              /* 初始化LED */
-    //  bsp_InitTimer();        /* 初始化滴答定时器 */
+    userInitMultiTime();        /* 初始化MultiTime */
 }
 
 /*
@@ -409,8 +409,8 @@ uint32_t HAL_GetTick(void)
 }
 #else
 /**
-  * @brief This function handles System tick timer.
-  */
+ * @brief This function handles System tick timer.
+ */
 void SysTick_Handler(void)
 {
     HAL_IncTick();
