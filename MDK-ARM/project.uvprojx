@@ -339,7 +339,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32H743xx</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Inc; ..\Drivers\STM32H7xx_HAL_Driver\Inc; ..\Drivers\STM32H7xx_HAL_Driver\Inc\Legacy; ..\Drivers\CMSIS\Device\ST\STM32H7xx\Include; ..\Drivers\CMSIS\Include; ..\User; ..\User\bsp; ..\User\bsp\inc; ..\OpenLib\MultiButton; ..\OpenLib\KFIFO; ..\OpenLib\perf_counter</IncludePath>
+              <IncludePath>..\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc\Legacy;..\Drivers\CMSIS\Device\ST\STM32H7xx\Include;..\Drivers\CMSIS\Include;..\User;..\User\bsp;..\User\bsp\inc;..\OpenLib\MultiButton;..\OpenLib\KFIFO;..\OpenLib\perf_counter;..\OpenLib\letter_shell;..\OpenLib\letter_shell\Lib\src</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -1785,6 +1785,41 @@
               <FileName>systick_wrapper_ual.s</FileName>
               <FileType>2</FileType>
               <FilePath>..\OpenLib\perf_counter\systick_wrapper_ual.s</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>OpenLib/letter_shell/src</GroupName>
+          <Files>
+            <File>
+              <FileName>shell.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\OpenLib\letter_shell\Lib\src\shell.c</FilePath>
+            </File>
+            <File>
+              <FileName>shell_cmd_list.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\OpenLib\letter_shell\Lib\src\shell_cmd_list.c</FilePath>
+            </File>
+            <File>
+              <FileName>shell_companion.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\OpenLib\letter_shell\Lib\src\shell_companion.c</FilePath>
+            </File>
+            <File>
+              <FileName>shell_ext.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\OpenLib\letter_shell\Lib\src\shell_ext.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>OpenLib/letter_shell/port</GroupName>
+          <Files>
+            <File>
+              <FileName>shell_port.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\OpenLib\letter_shell\shell_port.c</FilePath>
             </File>
           </Files>
         </Group>

@@ -99,7 +99,7 @@ typedef enum
 #define RTE_CMSIS_RTOS2_RTX5_SOURCE /* CMSIS-RTOS2 Keil RTX5 Source */
 #endif
 
-#endif
+#endif // #if USE_RTX == 1
 
 /* 检查是否定义了开发板型号 */
 #if !defined(STM32_BOARD)
@@ -139,6 +139,9 @@ typedef enum
 /* Open Software Library */
 #include "perf_counter.h"
 #include "ring_buffer.h"
+#include "multi_button.h"
+#include "shell.h"
+#include "shell_port.h"
 
 /* 通过取消注释或者添加注释的方式控制是否包含底层驱动模块 */
 #include "bsp_dma.h"
@@ -200,9 +203,6 @@ typedef enum
 //#include "bsp_camera.h"
 //#include "bsp_rs485_led.h"
 //#include "bsp_can.h"
-
-//#include "shell_port.h"
-//#include "shell_cfg.h"
 
 /* 提供给其他C文件调用的函数 */
 void bsp_Init(void);

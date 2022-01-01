@@ -41,7 +41,6 @@ int main(void)
     /* HAL库，MPU，Cache，时钟等系统初始化 */
     System_Init();
     bsp_Init();
-    BSP_INFO("main");
     while (1)
     {
         bsp_KeyScan5ms();
@@ -49,6 +48,8 @@ int main(void)
         bsp_key_test();
 
         delay_us(1000 * 5);
+
+        shellTask(&shell);
     }
 }
 

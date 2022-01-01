@@ -7,3 +7,7 @@
 	path = OpenLib/perf_counter
 	url = https://github.com/GorgonMeducer/perf_counter
 	branch = main
+[submodule "OpenLib/letter_shell/Lib"]
+	path = OpenLib/letter_shell/Lib
+	url = https://github.com/NevermindZZT/letter-shell
+	branch = master
