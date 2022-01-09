@@ -373,6 +373,7 @@ void bsp_key_test(void)
         default:
             break;
         }
+        BSP_INFO("keyCode = %2d, Event= %d,key= %d", KeyCode, KeyCode % 7, KeyCode / 7);
     }
 }
 /***************************** 安富莱电子 www.armfly.com (END OF FILE) *********************************/
