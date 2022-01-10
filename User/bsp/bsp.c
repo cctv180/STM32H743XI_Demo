@@ -405,7 +405,7 @@ uint32_t HAL_GetTick(void)
     }
     return ++ticks;
 #endif
-    return get_system_ticks();
+    return get_system_ms();
 }
 #else
 /**

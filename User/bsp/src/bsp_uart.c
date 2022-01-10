@@ -37,8 +37,6 @@
 #define UART_BRR_MIN 0x10U       /* UART BRR minimum authorized value */
 #define UART_BRR_MAX 0x0000FFFFU /* UART BRR maximum authorized value */
 
-#define DMA_TX_BUF_SIZE 16
-
 static void UartVarInit(void);
 static UART_T *ComToUart(COM_PORT_E _ucPort);
 static UART_T *BaseToUart(USART_TypeDef *_pBase);
@@ -46,7 +44,6 @@ static void UartSend(UART_T *_pUart, uint8_t *_ucaBuf, uint16_t _usLen);
 
 #if UART1_FIFO_EN == 1
 UART_T g_tUart1 = {0};
-uint8_t s_dma_buf1[DMA_TX_BUF_SIZE];  /* DMA发送缓冲区 */
 uint8_t s_tx_buf1[UART1_TX_BUF_SIZE]; /* 发送缓冲区 */
 uint8_t s_rx_buf1[UART1_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart1;
@@ -56,7 +53,6 @@ DMA_HandleTypeDef hdma_usart1_rx;
 
 #if UART2_FIFO_EN == 1
 UART_T g_tUart2 = {0};
-uint8_t s_dma_buf2[DMA_TX_BUF_SIZE];  /* DMA发送缓冲区 */
 uint8_t s_tx_buf2[UART2_TX_BUF_SIZE]; /* 发送缓冲区 */
 uint8_t s_rx_buf2[UART2_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart2;
@@ -66,7 +62,6 @@ DMA_HandleTypeDef hdma_usart2_rx;
 
 #if UART3_FIFO_EN == 1
 UART_T g_tUart3 = {0};
-uint8_t s_dma_buf3[DMA_TX_BUF_SIZE];  /* DMA发送缓冲区 */
 uint8_t s_tx_buf3[UART3_TX_BUF_SIZE]; /* 发送缓冲区 */
 uint8_t s_rx_buf3[UART3_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart3;
@@ -76,7 +71,6 @@ DMA_HandleTypeDef hdma_usart3_rx;
 
 #if UART4_FIFO_EN == 1
 UART_T g_tUart4 = {0};
-uint8_t s_dma_buf4[DMA_TX_BUF_SIZE];  /* DMA发送缓冲区 */
 uint8_t s_tx_buf4[UART4_TX_BUF_SIZE]; /* 发送缓冲区 */
 uint8_t s_rx_buf4[UART4_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart4;
@@ -86,7 +80,6 @@ DMA_HandleTypeDef hdma_usart4_rx;
 
 #if UART5_FIFO_EN == 1
 UART_T g_tUart5 = {0};
-uint8_t s_dma_buf5[DMA_TX_BUF_SIZE];  /* DMA发送缓冲区 */
 uint8_t s_tx_buf5[UART5_TX_BUF_SIZE]; /* 发送缓冲区 */
 uint8_t s_rx_buf5[UART5_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart5;
@@ -96,7 +89,6 @@ DMA_HandleTypeDef hdma_usart5_rx;
 
 #if UART6_FIFO_EN == 1
 UART_T g_tUart6 = {0};
-uint8_t s_dma_buf6[DMA_TX_BUF_SIZE];  /* DMA发送缓冲区 */
 uint8_t s_tx_buf6[UART6_TX_BUF_SIZE]; /* 发送缓冲区 */
 uint8_t s_rx_buf6[UART6_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart6;
@@ -106,7 +98,6 @@ DMA_HandleTypeDef hdma_usart6_rx;
 
 #if UART7_FIFO_EN == 1
 UART_T g_tUart7 = {0};
-uint8_t s_dma_buf7[DMA_TX_BUF_SIZE];  /* DMA发送缓冲区 */
 uint8_t s_tx_buf7[UART7_TX_BUF_SIZE]; /* 发送缓冲区 */
 uint8_t s_rx_buf7[UART7_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart7;
@@ -116,7 +107,6 @@ DMA_HandleTypeDef hdma_usart7_rx;
 
 #if UART8_FIFO_EN == 1
 UART_T g_tUart8 = {0};
-uint8_t s_dma_buf8[DMA_TX_BUF_SIZE];  /* DMA发送缓冲区 */
 uint8_t s_tx_buf8[UART8_TX_BUF_SIZE]; /* 发送缓冲区 */
 uint8_t s_rx_buf8[UART8_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart8;
@@ -599,15 +589,23 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
             pUart->Sending = FALSE;
             return;
         }
-
-        if (len > DMA_TX_BUF_SIZE)
+        else
         {
-            len = DMA_TX_BUF_SIZE;
+            if (pUart->tx_kfifo.buffer_size - pUart->tx_kfifo.read_index > len)
+            {
+                /* 不用回绕 */
+                SCB_CleanInvalidateDCache_by_Addr((uint32_t *)&(pUart->tx_kfifo.buffer_ptr[pUart->tx_kfifo.read_index]), (int32_t)len);
+                HAL_UART_Transmit_DMA(pUart->huart, &(pUart->tx_kfifo.buffer_ptr[pUart->tx_kfifo.read_index]), len);
+                pUart->tx_kfifo.read_index += len;
+            }
+            else
+            {
+                SCB_CleanInvalidateDCache_by_Addr((uint32_t *)&(pUart->tx_kfifo.buffer_ptr[pUart->tx_kfifo.read_index]), (int32_t)pUart->tx_kfifo.buffer_size - pUart->tx_kfifo.read_index);
+                HAL_UART_Transmit_DMA(pUart->huart, &(pUart->tx_kfifo.buffer_ptr[pUart->tx_kfifo.read_index]), pUart->tx_kfifo.buffer_size - pUart->tx_kfifo.read_index);
+                pUart->tx_kfifo.read_mirror = ~pUart->tx_kfifo.read_mirror;
+                pUart->tx_kfifo.read_index = 0;
+            }
         }
-        ringbuffer_get(&pUart->tx_kfifo, pUart->dma_buf, len);
-        /* CPU访问前，将Cache对应的区域无效化 */
-        SCB_CleanInvalidateDCache_by_Addr((uint32_t *)pUart->dma_buf, (int32_t)len);
-        HAL_UART_Transmit_DMA(pUart->huart, pUart->dma_buf, len);
     }
 }
 
@@ -788,19 +786,19 @@ static void UartSend(UART_T *_pUart, uint8_t *_ucaBuf, uint16_t _usLen)
     if (_pUart->Sending != TRUE)
     {
         _pUart->Sending = TRUE;
-        if (len > DMA_TX_BUF_SIZE)
+        if (_pUart->tx_kfifo.buffer_size - _pUart->tx_kfifo.read_index > len)
         {
-            ringbuffer_get(&_pUart->tx_kfifo, _pUart->dma_buf, DMA_TX_BUF_SIZE);
-            /* CPU访问前，将Cache对应的区域无效化 */
-            SCB_CleanInvalidateDCache_by_Addr((uint32_t *)_pUart->dma_buf, (int32_t)DMA_TX_BUF_SIZE);
-            HAL_UART_Transmit_DMA(_pUart->huart, _pUart->dma_buf, DMA_TX_BUF_SIZE);
+            /* 不用回绕 */
+            SCB_CleanInvalidateDCache_by_Addr((uint32_t *)&(_pUart->tx_kfifo.buffer_ptr[_pUart->tx_kfifo.read_index]), (int32_t)len);
+            HAL_UART_Transmit_DMA(_pUart->huart, &(_pUart->tx_kfifo.buffer_ptr[_pUart->tx_kfifo.read_index]), len);
+            _pUart->tx_kfifo.read_index += len;
         }
         else
         {
-            ringbuffer_get(&_pUart->tx_kfifo, _pUart->dma_buf, len);
-            /* CPU访问前，将Cache对应的区域无效化 */
-            SCB_CleanInvalidateDCache_by_Addr((uint32_t *)_pUart->dma_buf, (int32_t)len);
-            HAL_UART_Transmit_DMA(_pUart->huart, _pUart->dma_buf, len);
+            SCB_CleanInvalidateDCache_by_Addr((uint32_t *)&(_pUart->tx_kfifo.buffer_ptr[_pUart->tx_kfifo.read_index]), (int32_t)_pUart->tx_kfifo.buffer_size - _pUart->tx_kfifo.read_index);
+            HAL_UART_Transmit_DMA(_pUart->huart, &(_pUart->tx_kfifo.buffer_ptr[_pUart->tx_kfifo.read_index]), _pUart->tx_kfifo.buffer_size - _pUart->tx_kfifo.read_index);
+            _pUart->tx_kfifo.read_mirror = ~_pUart->tx_kfifo.read_mirror;
+            _pUart->tx_kfifo.read_index = 0;
         }
     }
 
@@ -1191,59 +1189,52 @@ static void UartVarInit(void)
 {
 #if UART1_FIFO_EN == 1
     g_tUart1.huart = &huart1;
-    g_tUart1.dma_buf = s_dma_buf1; /* 发送DMA指针 */
-    g_tUart1.SendBefor = 0;        /* 发送数据前的回调函数 */
-    g_tUart1.SendOver = 0;         /* 发送完毕后的回调函数 */
-    g_tUart1.ReciveNew = 0;        /* 接收到新数据后的回调函数 */
-    g_tUart1.Sending = 0;          /* 正在发送中标志 */
+    g_tUart1.SendBefor = 0; /* 发送数据前的回调函数 */
+    g_tUart1.SendOver = 0;  /* 发送完毕后的回调函数 */
+    g_tUart1.ReciveNew = 0; /* 接收到新数据后的回调函数 */
+    g_tUart1.Sending = 0;   /* 正在发送中标志 */
 #endif
 #if UART2_FIFO_EN == 1
     g_tUart2.huart = &huart2;
-    g_tUart2.dma_buf = s_dma_buf2; /* 发送DMA指针 */
-    g_tUart2.SendBefor = 0;        /* 发送数据前的回调函数 */
-    g_tUart2.SendOver = 0;         /* 发送完毕后的回调函数 */
-    g_tUart2.ReciveNew = 0;        /* 接收到新数据后的回调函数 */
-    g_tUart2.Sending = 0;          /* 正在发送中标志 */
+    g_tUart2.SendBefor = 0; /* 发送数据前的回调函数 */
+    g_tUart2.SendOver = 0;  /* 发送完毕后的回调函数 */
+    g_tUart2.ReciveNew = 0; /* 接收到新数据后的回调函数 */
+    g_tUart2.Sending = 0;   /* 正在发送中标志 */
 #endif
 #if UART3_FIFO_EN == 1
     g_tUart3.huart = &huart3;
-    g_tUart3.dma_buf = s_dma_buf3; /* 发送DMA指针 */
-    g_tUart3.SendBefor = 0;        /* 发送数据前的回调函数 */
-    g_tUart3.SendOver = 0;         /* 发送完毕后的回调函数 */
-    g_tUart3.ReciveNew = 0;        /* 接收到新数据后的回调函数 */
-    g_tUart3.Sending = 0;          /* 正在发送中标志 */
+    g_tUart3.SendBefor = 0; /* 发送数据前的回调函数 */
+    g_tUart3.SendOver = 0;  /* 发送完毕后的回调函数 */
+    g_tUart3.ReciveNew = 0; /* 接收到新数据后的回调函数 */
+    g_tUart3.Sending = 0;   /* 正在发送中标志 */
 #endif
 #if UART4_FIFO_EN == 1
     g_tUart4.huart = &huart4;
-    g_tUart4.dma_buf = s_dma_buf4; /* 发送DMA指针 */
-    g_tUart4.SendBefor = 0;        /* 发送数据前的回调函数 */
-    g_tUart4.SendOver = 0;         /* 发送完毕后的回调函数 */
-    g_tUart4.ReciveNew = 0;        /* 接收到新数据后的回调函数 */
-    g_tUart4.Sending = 0;          /* 正在发送中标志 */
+    g_tUart4.SendBefor = 0; /* 发送数据前的回调函数 */
+    g_tUart4.SendOver = 0;  /* 发送完毕后的回调函数 */
+    g_tUart4.ReciveNew = 0; /* 接收到新数据后的回调函数 */
+    g_tUart4.Sending = 0;   /* 正在发送中标志 */
 #endif
 #if UART5_FIFO_EN == 1
     g_tUart5.huart = &huart5;
-    g_tUart5.dma_buf = s_dma_buf5; /* 发送DMA指针 */
-    g_tUart5.SendBefor = 0;        /* 发送数据前的回调函数 */
-    g_tUart5.SendOver = 0;         /* 发送完毕后的回调函数 */
-    g_tUart5.ReciveNew = 0;        /* 接收到新数据后的回调函数 */
-    g_tUart5.Sending = 0;          /* 正在发送中标志 */
+    g_tUart5.SendBefor = 0; /* 发送数据前的回调函数 */
+    g_tUart5.SendOver = 0;  /* 发送完毕后的回调函数 */
+    g_tUart5.ReciveNew = 0; /* 接收到新数据后的回调函数 */
+    g_tUart5.Sending = 0;   /* 正在发送中标志 */
 #endif
 #if UART6_FIFO_EN == 1
     g_tUart6.huart = &huart6;
-    g_tUart6.dma_buf = s_dma_buf6; /* 发送DMA指针 */
-    g_tUart6.SendBefor = 0;        /* 发送数据前的回调函数 */
-    g_tUart6.SendOver = 0;         /* 发送完毕后的回调函数 */
-    g_tUart6.ReciveNew = 0;        /* 接收到新数据后的回调函数 */
-    g_tUart6.Sending = 0;          /* 正在发送中标志 */
+    g_tUart6.SendBefor = 0; /* 发送数据前的回调函数 */
+    g_tUart6.SendOver = 0;  /* 发送完毕后的回调函数 */
+    g_tUart6.ReciveNew = 0; /* 接收到新数据后的回调函数 */
+    g_tUart6.Sending = 0;   /* 正在发送中标志 */
 #endif
 #if UART7_FIFO_EN == 1
     g_tUart7.huart = &huart7;
-    g_tUart7.dma_buf = s_dma_buf7; /* 发送DMA指针 */
-    g_tUart7.SendBefor = 0;        /* 发送数据前的回调函数 */
-    g_tUart7.SendOver = 0;         /* 发送完毕后的回调函数 */
-    g_tUart7.ReciveNew = 0;        /* 接收到新数据后的回调函数 */
-    g_tUart7.Sending = 0;          /* 正在发送中标志 */
+    g_tUart7.SendBefor = 0; /* 发送数据前的回调函数 */
+    g_tUart7.SendOver = 0;  /* 发送完毕后的回调函数 */
+    g_tUart7.ReciveNew = 0; /* 接收到新数据后的回调函数 */
+    g_tUart7.Sending = 0;   /* 正在发送中标志 */
 #endif
 }
 

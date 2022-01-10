@@ -42,10 +42,10 @@
 
 #define UART1_FIFO_EN 1
 #define UART2_FIFO_EN 0
-#define UART3_FIFO_EN 1
+#define UART3_FIFO_EN 0
 #define UART4_FIFO_EN 0
 #define UART5_FIFO_EN 0
-#define UART6_FIFO_EN 1
+#define UART6_FIFO_EN 0
 #define UART7_FIFO_EN 0
 #define UART8_FIFO_EN 0
 
@@ -152,7 +152,6 @@ typedef struct
     void (*ReciveNew)(uint8_t _byte); /* 串口收到数据的回调函数指针 */
     RINGBUFF_T tx_kfifo;
     RINGBUFF_T rx_kfifo;
-    uint8_t *dma_buf;
     uint8_t Sending; /* 正在发送中 */
 } UART_T;
 

@@ -27,6 +27,6 @@ void Timer5msCallback(MultiTimer *timer, void *userData)
 
 void userInitMultiTime(void)
 {
-    MultiTimerInstall(PlatformTicksGetFunc);    //配置系统时间基准接口
+    MultiTimerInstall(PlatformTicksGetFunc);    //閰嶇疆绯荤粺鏃堕棿鍩哄噯鎺ュ彛
     MultiTimerStart(&Timer5ms, 10, Timer5msCallback, "5ms CYCLE timer");
 }
