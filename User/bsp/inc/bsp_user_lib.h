@@ -63,6 +63,13 @@ static __inline__ uint32_t roundup_pow_of_two(uint32_t _num) /* 找出最接近 
 #endif
 }
 
+#ifndef USER_ALIGN
+#define USER_ALIGN(size, align) (((size) + (align)-1) & ~((align)-1)) /* size 向上取align的整数倍 */
 #endif
 
+#ifndef USER_ALIGN_DOWN
+#define USER_ALIGN_DOWN(size, align) ((size) & ~((align)-1)) /* size 向下取align的整数倍 */
+#endif
+
+#endif
 /***************************** 安富莱电子 www.armfly.com (END OF FILE) *********************************/
