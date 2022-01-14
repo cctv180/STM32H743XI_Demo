@@ -44,8 +44,8 @@ static void UartSend(UART_T *_pUart, uint8_t *_ucaBuf, uint16_t _usLen);
 
 #if UART1_FIFO_EN == 1
 UART_T g_tUart1 = {0};
-uint8_t s_tx_buf1[UART1_TX_BUF_SIZE]; /* 发送缓冲区 */
-uint8_t s_rx_buf1[UART1_RX_BUF_SIZE]; /* 接收缓冲区 */
+__attribute__((aligned(32))) uint8_t s_tx_buf1[UART1_TX_BUF_SIZE]; /* 发送缓冲区 */
+__attribute__((aligned(32))) uint8_t s_rx_buf1[UART1_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart1;
 DMA_HandleTypeDef hdma_usart1_tx;
 DMA_HandleTypeDef hdma_usart1_rx;
@@ -53,8 +53,8 @@ DMA_HandleTypeDef hdma_usart1_rx;
 
 #if UART2_FIFO_EN == 1
 UART_T g_tUart2 = {0};
-uint8_t s_tx_buf2[UART2_TX_BUF_SIZE]; /* 发送缓冲区 */
-uint8_t s_rx_buf2[UART2_RX_BUF_SIZE]; /* 接收缓冲区 */
+__attribute__((aligned(32))) uint8_t s_tx_buf2[UART2_TX_BUF_SIZE]; /* 发送缓冲区 */
+__attribute__((aligned(32))) uint8_t s_rx_buf2[UART2_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart2;
 DMA_HandleTypeDef hdma_usart2_tx;
 DMA_HandleTypeDef hdma_usart2_rx;
@@ -62,8 +62,8 @@ DMA_HandleTypeDef hdma_usart2_rx;
 
 #if UART3_FIFO_EN == 1
 UART_T g_tUart3 = {0};
-uint8_t s_tx_buf3[UART3_TX_BUF_SIZE]; /* 发送缓冲区 */
-uint8_t s_rx_buf3[UART3_RX_BUF_SIZE]; /* 接收缓冲区 */
+__attribute__((aligned(32))) uint8_t s_tx_buf3[UART3_TX_BUF_SIZE]; /* 发送缓冲区 */
+__attribute__((aligned(32))) uint8_t s_rx_buf3[UART3_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart3;
 DMA_HandleTypeDef hdma_usart3_tx;
 DMA_HandleTypeDef hdma_usart3_rx;
@@ -71,8 +71,8 @@ DMA_HandleTypeDef hdma_usart3_rx;
 
 #if UART4_FIFO_EN == 1
 UART_T g_tUart4 = {0};
-uint8_t s_tx_buf4[UART4_TX_BUF_SIZE]; /* 发送缓冲区 */
-uint8_t s_rx_buf4[UART4_RX_BUF_SIZE]; /* 接收缓冲区 */
+__attribute__((aligned(32))) uint8_t s_tx_buf4[UART4_TX_BUF_SIZE]; /* 发送缓冲区 */
+__attribute__((aligned(32))) uint8_t s_rx_buf4[UART4_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart4;
 DMA_HandleTypeDef hdma_usart4_tx;
 DMA_HandleTypeDef hdma_usart4_rx;
@@ -80,8 +80,8 @@ DMA_HandleTypeDef hdma_usart4_rx;
 
 #if UART5_FIFO_EN == 1
 UART_T g_tUart5 = {0};
-uint8_t s_tx_buf5[UART5_TX_BUF_SIZE]; /* 发送缓冲区 */
-uint8_t s_rx_buf5[UART5_RX_BUF_SIZE]; /* 接收缓冲区 */
+__attribute__((aligned(32))) uint8_t s_tx_buf5[UART5_TX_BUF_SIZE]; /* 发送缓冲区 */
+__attribute__((aligned(32))) uint8_t s_rx_buf5[UART5_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart5;
 DMA_HandleTypeDef hdma_usart5_tx;
 DMA_HandleTypeDef hdma_usart5_rx;
@@ -89,8 +89,8 @@ DMA_HandleTypeDef hdma_usart5_rx;
 
 #if UART6_FIFO_EN == 1
 UART_T g_tUart6 = {0};
-uint8_t s_tx_buf6[UART6_TX_BUF_SIZE]; /* 发送缓冲区 */
-uint8_t s_rx_buf6[UART6_RX_BUF_SIZE]; /* 接收缓冲区 */
+__attribute__((aligned(32))) uint8_t s_tx_buf6[UART6_TX_BUF_SIZE]; /* 发送缓冲区 */
+__attribute__((aligned(32))) uint8_t s_rx_buf6[UART6_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart6;
 DMA_HandleTypeDef hdma_usart6_tx;
 DMA_HandleTypeDef hdma_usart6_rx;
@@ -98,8 +98,8 @@ DMA_HandleTypeDef hdma_usart6_rx;
 
 #if UART7_FIFO_EN == 1
 UART_T g_tUart7 = {0};
-uint8_t s_tx_buf7[UART7_TX_BUF_SIZE]; /* 发送缓冲区 */
-uint8_t s_rx_buf7[UART7_RX_BUF_SIZE]; /* 接收缓冲区 */
+__attribute__((aligned(32))) uint8_t s_tx_buf7[UART7_TX_BUF_SIZE]; /* 发送缓冲区 */
+__attribute__((aligned(32))) uint8_t s_rx_buf7[UART7_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart7;
 DMA_HandleTypeDef hdma_usart7_tx;
 DMA_HandleTypeDef hdma_usart7_rx;
@@ -107,8 +107,8 @@ DMA_HandleTypeDef hdma_usart7_rx;
 
 #if UART8_FIFO_EN == 1
 UART_T g_tUart8 = {0};
-uint8_t s_tx_buf8[UART8_TX_BUF_SIZE]; /* 发送缓冲区 */
-uint8_t s_rx_buf8[UART8_RX_BUF_SIZE]; /* 接收缓冲区 */
+__attribute__((aligned(32))) uint8_t s_tx_buf8[UART8_TX_BUF_SIZE]; /* 发送缓冲区 */
+__attribute__((aligned(32))) uint8_t s_rx_buf8[UART8_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart8;
 DMA_HandleTypeDef hdma_usart8_tx;
 DMA_HandleTypeDef hdma_usart8_rx;
@@ -594,13 +594,11 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
             if (pUart->tx_kfifo.buffer_size - pUart->tx_kfifo.read_index > len)
             {
                 /* 不用回绕 */
-                SCB_CleanInvalidateDCache_by_Addr((uint32_t *)&(pUart->tx_kfifo.buffer_ptr[pUart->tx_kfifo.read_index]), (int32_t)len);
                 HAL_UART_Transmit_DMA(pUart->huart, &(pUart->tx_kfifo.buffer_ptr[pUart->tx_kfifo.read_index]), len);
                 pUart->tx_kfifo.read_index += len;
             }
             else
             {
-                SCB_CleanInvalidateDCache_by_Addr((uint32_t *)&(pUart->tx_kfifo.buffer_ptr[pUart->tx_kfifo.read_index]), (int32_t)pUart->tx_kfifo.buffer_size - pUart->tx_kfifo.read_index);
                 HAL_UART_Transmit_DMA(pUart->huart, &(pUart->tx_kfifo.buffer_ptr[pUart->tx_kfifo.read_index]), pUart->tx_kfifo.buffer_size - pUart->tx_kfifo.read_index);
                 pUart->tx_kfifo.read_mirror = ~pUart->tx_kfifo.read_mirror;
                 pUart->tx_kfifo.read_index = 0;
@@ -781,6 +779,9 @@ static void UartSend(UART_T *_pUart, uint8_t *_ucaBuf, uint16_t _usLen)
 
     len = ringbuffer_put(&_pUart->tx_kfifo, _ucaBuf, _usLen);
 
+    /* 按地址清理数据高速缓存行 将传输缓冲区中的更新数据写入RAM */
+    SCB_CleanDCache_by_Addr((uint32_t *)_pUart->tx_kfifo.buffer_ptr, _pUart->tx_kfifo.buffer_size);
+
     /* DMA不忙 */
     // if (HAL_DMA_STATE_BUSY != HAL_DMA_GetState(_pUart->huart->hdmatx))
     if (_pUart->Sending != TRUE)
@@ -789,23 +790,23 @@ static void UartSend(UART_T *_pUart, uint8_t *_ucaBuf, uint16_t _usLen)
         if (_pUart->tx_kfifo.buffer_size - _pUart->tx_kfifo.read_index > len)
         {
             /* 不用回绕 */
-            SCB_CleanInvalidateDCache_by_Addr((uint32_t *)&(_pUart->tx_kfifo.buffer_ptr[_pUart->tx_kfifo.read_index]), (int32_t)len);
             HAL_UART_Transmit_DMA(_pUart->huart, &(_pUart->tx_kfifo.buffer_ptr[_pUart->tx_kfifo.read_index]), len);
             _pUart->tx_kfifo.read_index += len;
         }
         else
         {
-            SCB_CleanInvalidateDCache_by_Addr((uint32_t *)&(_pUart->tx_kfifo.buffer_ptr[_pUart->tx_kfifo.read_index]), (int32_t)_pUart->tx_kfifo.buffer_size - _pUart->tx_kfifo.read_index);
             HAL_UART_Transmit_DMA(_pUart->huart, &(_pUart->tx_kfifo.buffer_ptr[_pUart->tx_kfifo.read_index]), _pUart->tx_kfifo.buffer_size - _pUart->tx_kfifo.read_index);
             _pUart->tx_kfifo.read_mirror = ~_pUart->tx_kfifo.read_mirror;
             _pUart->tx_kfifo.read_index = 0;
         }
     }
 
+#if 0  /// TODO 超长截断末尾。
     while (len < _usLen)
     {
         len += ringbuffer_put(&_pUart->tx_kfifo, _ucaBuf + len, _usLen - len);
     }
+#endif // 0
 }
 
 /*
@@ -869,7 +870,7 @@ uint8_t comGetChar(COM_PORT_E _ucPort, uint8_t *_pByte)
         return 0;
     }
     /* CPU访问前，将Cache对应的区域无效化 */
-    SCB_InvalidateDCache_by_Addr((uint32_t *)(pUart->rx_kfifo.buffer_ptr + pUart->rx_kfifo.read_index), (int32_t)1);
+    SCB_InvalidateDCache_by_Addr((uint32_t *)USER_ALIGN_DOWN((uint32_t)pUart->rx_kfifo.buffer_ptr + pUart->rx_kfifo.read_index, 32), (int32_t)32);
     return ringbuffer_getchar(&pUart->rx_kfifo, _pByte);
 }
 
@@ -892,7 +893,7 @@ uint16_t comGetBuf(COM_PORT_E _ucPort, uint8_t *_pByte, uint16_t _usLen)
         return 0;
     }
     /* CPU访问前，将Cache对应的区域无效化 */
-    SCB_InvalidateDCache_by_Addr((uint32_t *)pUart->rx_kfifo.buffer_ptr, (int32_t)pUart->rx_kfifo.buffer_size);
+    SCB_InvalidateDCache_by_Addr((uint32_t *)pUart->rx_kfifo.buffer_ptr, pUart->rx_kfifo.buffer_size);
     return ringbuffer_get(&pUart->rx_kfifo, _pByte, _usLen);
 }
 
