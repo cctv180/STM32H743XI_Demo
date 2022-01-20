@@ -42,6 +42,11 @@ static UART_T *ComToUart(COM_PORT_E _ucPort);
 static UART_T *BaseToUart(USART_TypeDef *_pBase);
 static void UartSend(UART_T *_pUart, uint8_t *_ucaBuf, uint16_t _usLen);
 
+static void RS485_InitTXE(void);            /* 配置RS485发送使能GPIO */
+static void RS485_SendBefor(void);          /* 串口发送前 */
+static void RS485_SendOver(void);           /* 串口发送后 */
+static void RS485_ReciveNew(uint8_t _byte); /* 串口收到新数据 */
+
 #if UART1_FIFO_EN == 1
 UART_T g_tUart1 = {0};
 __attribute__((aligned(32))) uint8_t s_tx_buf1[UART1_TX_BUF_SIZE]; /* 发送缓冲区 */
@@ -319,17 +324,17 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
         /* Peripheral clock enable */
         __HAL_RCC_USART3_CLK_ENABLE();
 
-        __HAL_RCC_GPIOC_CLK_ENABLE();
+        __HAL_RCC_GPIOB_CLK_ENABLE();
         /**USART3 GPIO Configuration
-        PC10     ------> USART3_TX
-        PC11     ------> USART3_RX
+        PB10     ------> USART3_TX
+        PB11     ------> USART3_RX
         */
         GPIO_InitStruct.Pin = GPIO_PIN_10 | GPIO_PIN_11;
         GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
         GPIO_InitStruct.Pull = GPIO_NOPULL;
         GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
         GPIO_InitStruct.Alternate = GPIO_AF7_USART3;
-        HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+        HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
         /* USART3 DMA Init */
         /* USART3_RX Init */
@@ -493,10 +498,10 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef *huart)
         __HAL_RCC_USART3_CLK_DISABLE();
 
         /**USART3 GPIO Configuration
-        PC10     ------> USART3_TX
-        PC11     ------> USART3_RX
+        PB10     ------> USART3_TX
+        PB11     ------> USART3_RX
         */
-        HAL_GPIO_DeInit(GPIOC, GPIO_PIN_10 | GPIO_PIN_11);
+        HAL_GPIO_DeInit(GPIOB, GPIO_PIN_10 | GPIO_PIN_11);
 
         /* USART3 DMA DeInit */
         HAL_DMA_DeInit(huart->hdmarx);
@@ -564,6 +569,11 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
             pUart->rx_kfifo.read_index = index_new;
         }
         pUart->rx_kfifo.write_index = index_new;
+
+        if (pUart->ReciveNew)
+        {
+            pUart->ReciveNew(length); /* 比如，交给MODBUS解码程序处理字节流 */
+        }
     }
 }
 
@@ -1178,6 +1188,113 @@ uint16_t comGetLen(COM_PORT_E _ucPort)
     return ringbuffer_data_len(&pUart->rx_kfifo);
 }
 
+/* 如果是RS485通信，请按如下格式编写函数， 我们仅举了 USART3作为RS485的例子 */
+
+/*
+*********************************************************************************************************
+*    函 数 名: RS485_InitTXE
+*    功能说明: 配置RS485发送使能口线 TXE
+*    形    参: 无
+*    返 回 值: 无
+*********************************************************************************************************
+*/
+static void RS485_InitTXE(void)
+{
+    GPIO_InitTypeDef gpio_init;
+
+    /* 打开GPIO时钟 */
+    RS485_TXEN_GPIO_CLK_ENABLE();
+
+    /* 配置引脚为推挽输出 */
+    gpio_init.Mode = GPIO_MODE_OUTPUT_PP;        /* 推挽输出 */
+    gpio_init.Pull = GPIO_NOPULL;                /* 上下拉电阻不使能 */
+    gpio_init.Speed = GPIO_SPEED_FREQ_VERY_HIGH; /* GPIO速度等级 */
+    gpio_init.Pin = RS485_TXEN_PIN;
+    HAL_GPIO_Init(RS485_TXEN_GPIO_PORT, &gpio_init);
+}
+
+/*
+*********************************************************************************************************
+*    函 数 名: RS485_SetBaud
+*    功能说明: 修改485串口的波特率。
+*    形    参: _baud : 8倍过采样  波特率.0-12.5Mbps
+*                     16倍过采样 波特率.0-6.25Mbps
+*    返 回 值: 无
+*********************************************************************************************************
+*/
+void RS485_SetBaud(uint32_t _baud)
+{
+    comSetBaud(COM3, _baud);
+}
+
+/*
+*********************************************************************************************************
+*    函 数 名: RS485_SendBefor
+*    功能说明: 发送数据前的准备工作。对于RS485通信，请设置RS485芯片为发送状态，
+*              并修改 UartVarInit()中的函数指针等于本函数名，比如 g_tUart2.SendBefor = RS485_SendBefor
+*    形    参: 无
+*    返 回 值: 无
+*********************************************************************************************************
+*/
+static void RS485_SendBefor(void)
+{
+    RS485_TX_EN(); /* 切换RS485收发芯片为发送模式 */
+}
+
+/*
+*********************************************************************************************************
+*    函 数 名: RS485_SendOver
+*    功能说明: 发送一串数据结束后的善后处理。对于RS485通信，请设置RS485芯片为接收状态，
+*              并修改 UartVarInit()中的函数指针等于本函数名，比如 g_tUart2.SendOver = RS485_SendOver
+*    形    参: 无
+*    返 回 值: 无
+*********************************************************************************************************
+*/
+static void RS485_SendOver(void)
+{
+    RS485_RX_EN(); /* 切换RS485收发芯片为接收模式 */
+}
+
+/*
+*********************************************************************************************************
+*    函 数 名: RS485_ReciveNew
+*    功能说明: 接收到新的数据
+*    形    参: _byte 接收到的新数据
+*    返 回 值: 无
+*********************************************************************************************************
+*/
+static void RS485_ReciveNew(uint8_t _byte)
+{
+    // MODH_ReciveNew(_byte);
+}
+
+/*
+*********************************************************************************************************
+*    函 数 名: RS485_SendBuf
+*    功能说明: 通过RS485芯片发送一串数据。注意，本函数不等待发送完毕。
+*    形    参: _ucaBuf : 数据缓冲区
+*              _usLen : 数据长度
+*    返 回 值: 无
+*********************************************************************************************************
+*/
+void RS485_SendBuf(uint8_t *_ucaBuf, uint16_t _usLen)
+{
+    comSendBuf(COM3, _ucaBuf, _usLen);
+}
+
+/*
+*********************************************************************************************************
+*    函 数 名: RS485_SendStr
+*    功能说明: 向485总线发送一个字符串，0结束。
+*    形    参: _pBuf 字符串，0结束
+*    返 回 值: 无
+*********************************************************************************************************
+*/
+void RS485_SendStr(char *_pBuf)
+{
+    RS485_SendBuf((uint8_t *)_pBuf, strlen(_pBuf));
+}
+
 /*
 *********************************************************************************************************
 *   函 数 名: UartVarInit
@@ -1204,10 +1321,10 @@ static void UartVarInit(void)
 #endif
 #if UART3_FIFO_EN == 1
     g_tUart3.huart = &huart3;
-    g_tUart3.SendBefor = 0; /* 发送数据前的回调函数 */
-    g_tUart3.SendOver = 0;  /* 发送完毕后的回调函数 */
-    g_tUart3.ReciveNew = 0; /* 接收到新数据后的回调函数 */
-    g_tUart3.Sending = 0;   /* 正在发送中标志 */
+    g_tUart3.SendBefor = RS485_SendBefor; /* 发送数据前的回调函数 */
+    g_tUart3.SendOver = RS485_SendOver;   /* 发送完毕后的回调函数 */
+    g_tUart3.ReciveNew = RS485_ReciveNew; /* 接收到新数据后的回调函数 */
+    g_tUart3.Sending = 0;                 /* 正在发送中标志 */
 #endif
 #if UART4_FIFO_EN == 1
     g_tUart4.huart = &huart4;
@@ -1249,7 +1366,8 @@ static void UartVarInit(void)
 */
 void bsp_InitUart(void)
 {
-    UartVarInit(); /* 必须先初始化全局变量,再配置硬件 */
+    UartVarInit();   /* 必须先初始化全局变量,再配置硬件 */
+    RS485_InitTXE(); /* 配置RS485芯片的发送使能硬件，配置为推挽输出 */
 #if UART1_FIFO_EN == 1
     MX_USART1_UART_Init(); /* 初始化串口 */
     ringbuffer_init(&g_tUart1.tx_kfifo, s_tx_buf1, (UART1_TX_BUF_SIZE));

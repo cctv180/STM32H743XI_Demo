@@ -42,7 +42,7 @@
 
 #define UART1_FIFO_EN 1
 #define UART2_FIFO_EN 0
-#define UART3_FIFO_EN 0
+#define UART3_FIFO_EN 1
 #define UART4_FIFO_EN 0
 #define UART5_FIFO_EN 0
 #define UART6_FIFO_EN 0
@@ -167,6 +167,10 @@ void comClearTxFifo(COM_PORT_E _ucPort);
 void comClearRxFifo(COM_PORT_E _ucPort);
 int comSetBaud(COM_PORT_E _ucPort, uint32_t _BaudRate);
 uint16_t comGetLen(COM_PORT_E _ucPort);
+
+void RS485_SendBuf(uint8_t *_ucaBuf, uint16_t _usLen);
+void RS485_SendStr(char *_pBuf);
+void RS485_SetBaud(uint32_t _baud);
 
 #endif
 /***************************** 安富莱电子 www.armfly.com (END OF FILE) *********************************/
