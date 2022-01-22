@@ -129,6 +129,11 @@ static uint8_t IsKeyDownFunc(uint8_t _id)
         {
             return 0;
         }
+        /* 屏蔽同时按下 K2 K1 K3 */
+        if ((value == 1) && (_id == KID_K2) && ((1 == KeyPinActive(KID_K3)) || (1 == KeyPinActive(KID_K1))))
+        {
+            return 0;
+        }
 
         return value;
     }
