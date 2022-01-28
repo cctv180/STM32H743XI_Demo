@@ -199,7 +199,7 @@ typedef enum
 //#include "bsp_ts_gt911.h"
 //#include "bsp_ts_stmpe811.h"
 
-//#include "bsp_beep.h"
+#include "bsp_beep.h"
 #include "bsp_tim_pwm.h"
 //#include "bsp_sdio_sd.h"
 //#include "bsp_dht11.h"

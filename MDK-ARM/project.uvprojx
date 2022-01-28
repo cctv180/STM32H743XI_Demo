@@ -1756,6 +1756,11 @@
               <FileType>1</FileType>
               <FilePath>..\User\bsp\src\bsp_tim_pwm.c</FilePath>
             </File>
+            <File>
+              <FileName>bsp_beep.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\bsp\src\bsp_beep.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

@@ -84,6 +84,7 @@ void bsp_Init(void)
     userInitShell();            /* 初始化shell */
     bsp_InitExtIO();            /* 初始化FMC总线74HC574扩展IO. 必须在 bsp_InitLed()前执行 */
     bsp_InitLed();              /* 初始化LED */
+    BEEP_InitHard();            /* 初始化beep */
     userInitMultiTime();        /* 初始化MultiTime */
 }
 
