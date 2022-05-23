@@ -34,7 +34,14 @@
 /* 开启调试打印 */
 #define DEBUG_MODE
 
-/* 开启调试模式  1开启 0关闭  */
+/*
+ * 开启 Event Recorder组件 1开启 0关闭
+ * 启用 Event Recorder 需要从RTE勾选
+ * 1. Compiler 项目勾选 Event Recorder
+ * 2. Debug (printf) Viewer 重定向 需要同时设置STDOUT EVR模式
+ *    a. 启用Use MicroLIB库
+ *    b. 不要重定向fpuc和fgetc 即删除串口打印重定向
+ */
 #define Enable_EventRecorder 0
 
 /* RTOS_RTX开启  1开启 0关闭 */
@@ -93,6 +100,10 @@ typedef enum
 #else
 #define BSP_INFO(...)
 #endif
+
+#if Enable_EventRecorder == 1
+#include "EventRecorder.h"
+#endif // #if Enable_EventRecorder == 1
 
 #if USE_RTX == 1
 
