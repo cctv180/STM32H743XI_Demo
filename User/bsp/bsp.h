@@ -48,7 +48,7 @@
 #define USE_RTX 0
 
 /* 获取系统时间 */
-#define get_system_ms() (get_system_ticks() / (SystemCoreClock / 1000ul))
+//#define get_system_ms() (get_system_ticks() / (SystemCoreClock / 1000ul)) //新版本已经集成
 #define get_system_us() (get_system_ticks() / (SystemCoreClock / 1000000ul))
 
 /* CPU空闲时执行的函数 */
