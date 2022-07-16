@@ -60,14 +60,14 @@
 /* 定义端口号 */
 typedef enum
 {
-    COM1 = 0, /* USART1 */
-    COM2 = 1, /* USART2 */
-    COM3 = 2, /* USART3 */
-    COM4 = 3, /* UART4  */
-    COM5 = 4, /* UART5  */
-    COM6 = 5, /* USART6 */
-    COM7 = 6, /* UART7  */
-    COM8 = 7  /* UART8  */
+    COM1 = 1, /* USART1 */
+    COM2,     /* USART2 */
+    COM3,     /* USART3 */
+    COM4,     /* UART4  */
+    COM5,     /* UART5  */
+    COM6,     /* USART6 */
+    COM7,     /* UART7  */
+    COM8      /* UART8  */
 } COM_PORT_E;
 
 /* 定义串口波特率和FIFO缓冲区大小，分为发送缓冲区和接收缓冲区, 支持全双工 */

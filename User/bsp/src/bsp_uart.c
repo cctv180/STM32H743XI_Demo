@@ -1441,7 +1441,7 @@ static int com_uart(int argc, char *argv[])
 
     const char *help_info[] =
         {
-            [CMD_PROBE_INDEX] = "com probe [part_num] Select Uart 0 - 7",
+            [CMD_PROBE_INDEX] = "com probe Select Uart 1 - 8",
             [CMD_READ_INDEX] = "com read mode size",
             [CMD_WRITE_INDEX] = "com write xxx",
             [CMD_CLEAR_INDEX] = "com clear",
@@ -1465,15 +1465,24 @@ static int com_uart(int argc, char *argv[])
         if (!strcmp(operator, "probe")) //选择串口号
         {
             com_num = atoi(argv[2]);
-            if (com_num <= 0 || com_num > 8)
+            if ((ComToUart(com_num)) != 0)
             {
-                com_num = -1;
-                printf("COM Select Error(Range 1 - 8).\r\n");
+                printf("COM Select %d OK\r\n", com_num);
             }
             else
             {
-                printf("COM Select %d OK\r\n", com_num);
-                com_num--; //实际端口号
+                com_num = -1;
+
+                // printf("COM Select Error(Range 1 - 8).\r\n");
+                printf("COM Select Error(Range");
+                for (uint8_t i = 0; i <= 8; i++)
+                {
+                    if ((ComToUart(i)) != 0)
+                    {
+                        printf(" %d", i);
+                    }
+                }
+                printf(").\r\n");
             }
         }
         else if (!strcmp(operator, "read"))
@@ -1550,7 +1559,7 @@ static int com_uart(int argc, char *argv[])
                 printf("read parameter Error.\r\ncom read [len | char | buff]\r\n");
                 result = -1;
             }
-            printf("Select COM%d Read\r\n", com_num + 1);
+            printf("Select COM%d Read\r\n", com_num);
         }
         else if (!strcmp(operator, "write"))
         {
