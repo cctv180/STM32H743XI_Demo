@@ -44,7 +44,7 @@ int main(void)
 
     while (1)
     {
-        MultiTimerYield(); //执行定时器调度
+        MultiTimerYield(); // 执行定时器调度
         shellTask(&shell); // shell任务
 
         extern void bsp_key_test(void);

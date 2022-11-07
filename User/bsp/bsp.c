@@ -77,15 +77,16 @@ void System_Init(void)
 */
 void bsp_Init(void)
 {
-    init_cycle_counter(TRUE);   /* 初始化perf_counter库 定时器已经初始化 */
-    bsp_InitKey();              /* 按键初始化，要放在滴答定时器之前，因为按钮检测是通过滴答定时器扫描 */
-    bsp_Init_dma();             /* 初始化DMA */
-    bsp_InitUart();             /* 初始化串口 */
-    userInitShell();            /* 初始化shell */
-    bsp_InitExtIO();            /* 初始化FMC总线74HC574扩展IO. 必须在 bsp_InitLed()前执行 */
-    bsp_InitLed();              /* 初始化LED */
-    BEEP_InitHard();            /* 初始化beep */
-    userInitMultiTime();        /* 初始化MultiTime */
+    bsp_InitQspi();           /* 初始化QSPI */
+    init_cycle_counter(TRUE); /* 初始化perf_counter库 定时器已经初始化 */
+    bsp_InitKey();            /* 按键初始化，要放在滴答定时器之前，因为按钮检测是通过滴答定时器扫描 */
+    bsp_Init_dma();           /* 初始化DMA */
+    bsp_InitUart();           /* 初始化串口 */
+    userInitShell();          /* 初始化shell */
+    bsp_InitExtIO();          /* 初始化FMC总线74HC574扩展IO. 必须在 bsp_InitLed()前执行 */
+    bsp_InitLed();            /* 初始化LED */
+    BEEP_InitHard();          /* 初始化beep */
+    userInitMultiTime();      /* 初始化MultiTime */
 }
 
 /*

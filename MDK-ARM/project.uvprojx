@@ -1818,6 +1818,11 @@
               <FileType>1</FileType>
               <FilePath>..\User\bsp\src\bsp_beep.c</FilePath>
             </File>
+            <File>
+              <FileName>bsp_qspi.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\bsp\src\bsp_qspi.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
