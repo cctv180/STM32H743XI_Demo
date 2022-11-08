@@ -190,8 +190,8 @@ void bsp_InitQspi(void)
         ERROR_HANDLER();
     }
 
-    /* 设置时钟速度，QSPI clock = 80MHz / (ClockPrescaler+1) = 40MHz */
-    hqspi.Init.ClockPrescaler = 3;
+    /* 设置时钟速度，QSPI clock = 200MHz / (ClockPrescaler+1) = 100MHz */
+    hqspi.Init.ClockPrescaler = 1;
 
     /* 设置FIFO阀值，范围1 - 32 */
     hqspi.Init.FifoThreshold = 32;
@@ -204,7 +204,7 @@ void bsp_InitQspi(void)
 
     /*Flash大小是2^(FlashSize + 1) = 2^25 = 32MB */
     // QSPI_FLASH_SIZE - 1; 需要扩大一倍，否则内存映射方式最后1个地址时，会异常。
-    hqspi.Init.FlashSize = QSPI_FLASH_SIZE - 1;
+    hqspi.Init.FlashSize = QSPI_FLASH_SIZE;
 
     /* 命令之间的CS片选至少保持2个时钟周期的高电平 */
     hqspi.Init.ChipSelectHighTime = QSPI_CS_HIGH_TIME_2_CYCLE;
@@ -438,11 +438,11 @@ void QSPI_EraseSector(uint32_t _uiSectorAddr)
     /* 写使能 */
     QSPI_WriteEnable();
 
-    if (QSPI_SendCommand(QSPI_SECTOR_ERASE_4K_CMD,                              /* 要发送的指令 */
+    if (QSPI_SendCommand(QSPI_SECTOR_ERASE_32ADD_4K_CMD,                        /* 要发送的指令 */
                          QSPI_INSTRUCTION_1_LINE,                               /* 指令线模式 */
                          _uiSectorAddr & (0xffffffff - (QSPI_SECTOR_SIZE - 1)), /* 要发送的地址 */
                          QSPI_ADDRESS_1_LINE,                                   /* 地址线模式 */
-                         QSPI_ADDRESS_24_BITS,                                  /* 地址长度 */
+                         QSPI_ADDRESS_32_BITS,                                  /* 地址长度 */
                          0,                                                     /* 空指令周期数 */
                          QSPI_DATA_NONE,                                        /* 数据线模式 */
                          0) != HAL_OK)                                          /* 数据长度 */
@@ -497,11 +497,11 @@ void QSPI_ReadBuffer(uint8_t *_pBuf, uint32_t _uiReadAddr, uint32_t _uiSize)
     QSPI_WaitBusy();
 
     /* 参数配置 */
-    cmd.Instruction = QSPI_FAST_READ_4_CMD;               /* 指令 */
+    cmd.Instruction = QSPI_FAST_READ_32ADD_4_CMD;         /* 指令 */
     cmd.InstructionMode = QSPI_INSTRUCTION_1_LINE;        /* 指令线模式 */
     cmd.Address = _uiReadAddr;                            /* 地址 */
     cmd.AddressMode = QSPI_ADDRESS_4_LINES;               /* 地址线模式 */
-    cmd.AddressSize = QSPI_ADDRESS_24_BITS;               /* 地址长度 */
+    cmd.AddressSize = QSPI_ADDRESS_32_BITS;               /* 地址长度 */
     cmd.AlternateBytes = 0xf0;                            /* 交替字节 */
     cmd.AlternateByteMode = QSPI_ALTERNATE_BYTES_4_LINES; /* 交替字节线模式 */
     cmd.AlternateBytesSize = QSPI_ALTERNATE_BYTES_8_BITS; /* 交替字节长度 */
@@ -537,31 +537,19 @@ void QSPI_ReadBuffer(uint8_t *_pBuf, uint32_t _uiReadAddr, uint32_t _uiSize)
 */
 void QSPI_WriteBuffer(uint8_t *_pBuf, uint32_t _uiWriteAddr, uint16_t _uiSize)
 {
-    QSPI_CommandTypeDef cmd = {0};
-
     /* 等待Flash处于空闲状态 */
     QSPI_WaitBusy();
     /* 写使能 */
     QSPI_WriteEnable();
 
-    /* 参数配置 */
-    cmd.Instruction = QSPI_PAGE_PROG_CMD;                 /* 指令 */
-    cmd.InstructionMode = QSPI_INSTRUCTION_1_LINE;        /* 指令线模式 */
-    cmd.Address = _uiWriteAddr;                           /* 地址 */
-    cmd.AddressMode = QSPI_ADDRESS_1_LINE;                /* 地址线模式 */
-    cmd.AddressSize = QSPI_ADDRESS_24_BITS;               /* 地址长度 */
-    cmd.AlternateBytes = 0x00;                            /* 交替字节 */
-    cmd.AlternateByteMode = QSPI_ALTERNATE_BYTES_NONE;    /* 交替字节线模式 */
-    cmd.AlternateBytesSize = QSPI_ALTERNATE_BYTES_8_BITS; /* 交替字节长度 */
-    cmd.DummyCycles = 0;                                  /* 设置空指令周期数 */
-    cmd.DataMode = QSPI_DATA_1_LINE;                      /* 数据线模式 */
-    cmd.NbData = _uiSize;                                 /* 数据长度 */
-    /* 基本配置 */
-    cmd.SIOOMode = QSPI_SIOO_INST_EVERY_CMD;          /* 每次都发送指令 */
-    cmd.DdrMode = QSPI_DDR_MODE_DISABLE;              /* 关闭DDR模式 */
-    cmd.DdrHoldHalfCycle = QSPI_DDR_HHC_ANALOG_DELAY; /* 数据输出延迟 */
-
-    if (HAL_QSPI_Command(&hqspi, &cmd, 10000) != HAL_OK)
+    if (QSPI_SendCommand(QSPI_PAGE_PROG_32ADD_CMD, /* 要发送的指令 */
+                         QSPI_INSTRUCTION_1_LINE,  /* 指令线模式 */
+                         _uiWriteAddr,             /* 要发送的地址 */
+                         QSPI_ADDRESS_1_LINE,      /* 地址线模式 */
+                         QSPI_ADDRESS_32_BITS,     /* 地址长度 */
+                         0,                        /* 空指令周期数 */
+                         QSPI_DATA_1_LINE,         /* 数据线模式 */
+                         _uiSize) != HAL_OK)       /* 数据长度 */
     {
         ERROR_HANDLER();
     }
@@ -587,12 +575,12 @@ void QSPI_MemoryMapped(void)
     QSPI_MemoryMappedTypeDef cfg = {0};
 
     /* 参数配置 */
-    cmd.Instruction = QSPI_FAST_READ_4_CMD;               /* 指令 */
+    cmd.Instruction = QSPI_FAST_READ_32ADD_4_CMD;         /* 指令 */
     cmd.InstructionMode = QSPI_INSTRUCTION_1_LINE;        /* 指令线模式 */
     cmd.Address = 0;                                      /* 地址 */
     cmd.AddressMode = QSPI_ADDRESS_4_LINES;               /* 地址线模式 */
-    cmd.AddressSize = QSPI_ADDRESS_24_BITS;               /* 地址长度 */
-    cmd.AlternateBytes = 0x00;                            /* 交替字节 */
+    cmd.AddressSize = QSPI_ADDRESS_32_BITS;               /* 地址长度 */
+    cmd.AlternateBytes = 0xff;                            /* 交替字节 */
     cmd.AlternateByteMode = QSPI_ALTERNATE_BYTES_4_LINES; /* 交替字节线模式 */
     cmd.AlternateBytesSize = QSPI_ALTERNATE_BYTES_8_BITS; /* 交替字节长度 */
     cmd.DummyCycles = 4;                                  /* 设置空指令周期数 */
@@ -625,7 +613,8 @@ static int cmd_qspi(int argc, char *argv[])
         "qspi probe Select 1 - 2",
         "qspi read reg/buff",
         "qspi write reg/buff",
-        "qspi erase sector/chip"};
+        "qspi erase sector/chip",
+        "qspi xip init/read"};
 
     // printf("\r\nargc = %d\r\n\r\n", argc);
 
@@ -649,9 +638,10 @@ static int cmd_qspi(int argc, char *argv[])
             {
                 uint32_t id = QSPI_ReadID();
                 printf("QSPI_ReadID = 0x%08x\r\n", id);
-
+                printf("hqspi.Init.FlashSize = %d\r\n", hqspi.Init.FlashSize);
                 s_probe = num;
-                return (int)s_probe;
+
+                return 0;
             }
             else
             {
@@ -674,7 +664,7 @@ static int cmd_qspi(int argc, char *argv[])
                 reg = QSPI_ReadSR(atoi(argv[3]));
                 printf("reg = 0b%c%c%c%c%c%c%c%c\r\n", BYTE_TO_BINARY(reg));
 
-                return reg;
+                return 0;
             }
             else if (!strcmp(argv[2], "buff"))
             {
@@ -726,6 +716,8 @@ static int cmd_qspi(int argc, char *argv[])
                     {
                         free(buff);
                     }
+
+                    return 0;
                 }
                 else
                 {
@@ -803,6 +795,33 @@ static int cmd_qspi(int argc, char *argv[])
             else
             {
                 printf("write parameter Error.\r\n%s\r\n", help_info[3]);
+                return -1;
+            }
+        }
+        else if (!strcmp(argv[1], "xip"))
+        {
+            if (!strcmp(argv[2], "init"))
+            {
+                QSPI_MemoryMapped();
+
+                return 0;
+            }
+            else if (!strcmp(argv[2], "read"))
+            {
+                if (argc < 4)
+                {
+                    printf("Error Command\r\n%s %s %s add.\r\n",
+                           argv[0], argv[1], argv[2]);
+                    return -1;
+                }
+                uint32_t addr = 0x90000000 + atoi(argv[3]);
+                printf("qspi address 0x%08x = 0x%08x\r\n", addr, *(uint32_t *)addr);
+
+                return 0;
+            }
+            else
+            {
+                printf("write parameter Error.\r\n%s\r\n", help_info[4]);
                 return -1;
             }
         }
