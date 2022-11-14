@@ -723,6 +723,11 @@
               <FilePath>..\User\bsp\src\bsp_fmc_io.c</FilePath>
             </File>
             <File>
+              <FileName>bsp_fmc_sdram.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\bsp\src\bsp_fmc_sdram.c</FilePath>
+            </File>
+            <File>
               <FileName>bsp_led.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\User\bsp\src\bsp_led.c</FilePath>

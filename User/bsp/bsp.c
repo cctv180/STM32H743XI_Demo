@@ -16,6 +16,7 @@
 */
 #include "bsp.h"
 #include "perf_counter.h"
+#include "bsp_fmc_sdram.h"
 /*
 *********************************************************************************************************
 *                                       函数声明
@@ -77,6 +78,7 @@ void System_Init(void)
 */
 void bsp_Init(void)
 {
+    bsp_InitExtSDRAM();       /* 初始化SDRAM */
     bsp_InitQspi();           /* 初始化QSPI */
     init_cycle_counter(TRUE); /* 初始化perf_counter库 定时器已经初始化 */
     bsp_InitKey();            /* 按键初始化，要放在滴答定时器之前，因为按钮检测是通过滴答定时器扫描 */
