@@ -307,31 +307,31 @@ static void button_callback(void *button)
     switch (btn_val)
     {
     case PRESS_DOWN:
-        ret = (btn->key_id) * number_of_event + PRESS_DOWN;
+        ret = (btn->button_id) * number_of_event + PRESS_DOWN;
         break;
 
     case PRESS_UP:
-        ret = (btn->key_id) * number_of_event + PRESS_UP;
+        ret = (btn->button_id) * number_of_event + PRESS_UP;
         break;
 
     case PRESS_REPEAT:
-        ret = (btn->key_id) * number_of_event + PRESS_REPEAT;
+        ret = (btn->button_id) * number_of_event + PRESS_REPEAT;
         break;
 
     case SINGLE_CLICK:
-        ret = (btn->key_id) * number_of_event + SINGLE_CLICK;
+        ret = (btn->button_id) * number_of_event + SINGLE_CLICK;
         break;
 
     case DOUBLE_CLICK:
-        ret = (btn->key_id) * number_of_event + DOUBLE_CLICK;
+        ret = (btn->button_id) * number_of_event + DOUBLE_CLICK;
         break;
 
     case LONG_PRESS_START:
-        ret = (btn->key_id) * number_of_event + LONG_PRESS_START;
+        ret = (btn->button_id) * number_of_event + LONG_PRESS_START;
         break;
 
     case LONG_PRESS_HOLD:
-        ret = (btn->key_id) * number_of_event + LONG_PRESS_HOLD;
+        ret = (btn->button_id) * number_of_event + LONG_PRESS_HOLD;
         break;
     }
     if (ret != KEY_NONE)

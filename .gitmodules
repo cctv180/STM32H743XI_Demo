@@ -1,7 +1,6 @@
-
 [submodule "OpenLib/MultiButton"]
 	path = OpenLib/MultiButton
-	url = https://github.com/cctv180/MultiButton
+	url = https://github.com/0x1abin/MultiButton
 	branch = master
 [submodule "OpenLib/perf_counter"]
 	path = OpenLib/perf_counter
