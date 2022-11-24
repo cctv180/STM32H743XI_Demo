@@ -29,23 +29,23 @@
 ;   <o> Stack Size (in Bytes) <0x0-0xFFFFFFFF:8>
 ; </h>
 
-Stack_Size      EQU     0x400
-
-                AREA    STACK, NOINIT, READWRITE, ALIGN=3   ; 声明名为"STACK"的 NOINIT 段,读写，2^3=8字节对齐
-Stack_Mem       SPACE   Stack_Size                          ; "Stack_Mem"数据段分配"Stack_Size"空间 用于栈
-__initial_sp        ; 标号"__initial_sp"紧挨着 SPACE 语句表示结束地址，即栈顶地址，栈是由高向低生长的
+; Stack_Size      EQU     0x400
+;
+;                 AREA    STACK, NOINIT, READWRITE, ALIGN=3   ; 声明名为"STACK"的 NOINIT 段,读写，2^3=8字节对齐
+; Stack_Mem       SPACE   Stack_Size                          ; "Stack_Mem"数据段分配"Stack_Size"空间 用于栈
+; __initial_sp        ; 标号"__initial_sp"紧挨着 SPACE 语句表示结束地址，即栈顶地址，栈是由高向低生长的
 
 
 ; <h> Heap Configuration
 ;   <o>  Heap Size (in Bytes) <0x0-0xFFFFFFFF:8>
 ; </h>
 
-Heap_Size      EQU     0x200
-
-                AREA    HEAP, NOINIT, READWRITE, ALIGN=3
-__heap_base
-Heap_Mem        SPACE   Heap_Size
-__heap_limit
+; Heap_Size      EQU     0x200
+;
+;                 AREA    HEAP, NOINIT, READWRITE, ALIGN=3
+; __heap_base
+; Heap_Mem        SPACE   Heap_Size
+; __heap_limit
 
 
                 PRESERVE8                       ; 8字节对齐
@@ -58,7 +58,10 @@ __heap_limit
                 EXPORT  __Vectors_Size
 
                 ; Exception （异常）向量16个 不可调优先级，不可关闭
-__Vectors       DCD     __initial_sp                      ; Top of Stack        ; 保留（实际存的是MSP地址）
+; __Vectors       DCD     __initial_sp                      ; Top of Stack        ; 保留（实际存的是MSP地址）
+                IMPORT   |Image$$ARM_LIB_STACK$$ZI$$Limit|
+
+__Vectors       DCD      |Image$$ARM_LIB_STACK$$ZI$$Limit|
                 DCD     Reset_Handler                     ; Reset Handler       ; 复位
                 DCD     NMI_Handler                       ; NMI Handler
                 DCD     HardFault_Handler                 ; Hard Fault Handler
@@ -584,28 +587,28 @@ WAKEUP_PIN_IRQHandler
 ;*******************************************************************************
 ; User Stack and Heap initialization
 ;*******************************************************************************
-                 IF      :DEF:__MICROLIB    ;定义了则赋予标号__initial全局属性供外部文件调用
-
-                 EXPORT  __initial_sp
-                 EXPORT  __heap_base
-                 EXPORT  __heap_limit
-
-                 ELSE
-
-                 IMPORT  __use_two_region_memory
-                 EXPORT  __user_initial_stackheap
-
-__user_initial_stackheap
-
-                 LDR     R0, =  Heap_Mem
-                 LDR     R1, =(Stack_Mem + Stack_Size)
-                 LDR     R2, = (Heap_Mem +  Heap_Size)
-                 LDR     R3, = Stack_Mem
-                 BX      LR
-
-                 ALIGN
-
-                 ENDIF
-
-                 END
+;                  IF      :DEF:__MICROLIB    ;定义了则赋予标号__initial全局属性供外部文件调用
+;
+;                  EXPORT  __initial_sp
+;                  EXPORT  __heap_base
+;                  EXPORT  __heap_limit
+;
+;                  ELSE
+;
+;                  IMPORT  __use_two_region_memory
+;                  EXPORT  __user_initial_stackheap
+;
+; __user_initial_stackheap
+;
+;                  LDR     R0, =  Heap_Mem
+;                  LDR     R1, =(Stack_Mem + Stack_Size)
+;                  LDR     R2, = (Heap_Mem +  Heap_Size)
+;                  LDR     R3, = Stack_Mem
+;                  BX      LR
+;
+;                  ALIGN
+;
+;                  ENDIF
+;
+                  END
 
