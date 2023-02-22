@@ -552,11 +552,11 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 
     if (pUart != 0)
     {
-        uint16_t space = ringbuffer_space_len(&pUart->rx_kfifo);                                         //剩余空间
-        uint16_t index_new = Size & (pUart->rx_kfifo.buffer_size - 1);                                   //新写入指针
-        uint16_t length = (index_new - pUart->rx_kfifo.write_index) & (pUart->rx_kfifo.buffer_size - 1); //新写入长度
+        uint16_t space = ringbuffer_space_len(&pUart->rx_kfifo);                                         // 剩余空间
+        uint16_t index_new = Size & (pUart->rx_kfifo.buffer_size - 1);                                   // 新写入指针
+        uint16_t length = (index_new - pUart->rx_kfifo.write_index) & (pUart->rx_kfifo.buffer_size - 1); // 新写入长度
 
-        if (pUart->rx_kfifo.write_index > index_new) //满一圈
+        if (pUart->rx_kfifo.write_index > index_new) // 满一圈
         {
             pUart->rx_kfifo.write_mirror = ~pUart->rx_kfifo.write_mirror;
             if (length > space)
@@ -1418,7 +1418,7 @@ void bsp_InitUart(void)
 #endif
 }
 
-#ifdef DEBUG_MODE
+#if defined(__SHELL_H__) && defined(DEBUG_MODE)
 static int com_uart(int argc, char *argv[])
 {
 #define __is_print(ch) ((unsigned int)((ch) - ' ') < 127u - ' ')
@@ -1462,7 +1462,7 @@ static int com_uart(int argc, char *argv[])
     else
     {
         const char *operator= argv[1];
-        if (!strcmp(operator, "probe")) //选择串口号
+        if (!strcmp(operator, "probe")) // 选择串口号
         {
             com_num = atoi(argv[2]);
             if ((ComToUart(com_num)) != 0)
@@ -1607,7 +1607,7 @@ static int com_uart(int argc, char *argv[])
     }
     return result;
 }
-//导出到命令列表里
+// 导出到命令列表里
 SHELL_EXPORT_CMD(SHELL_CMD_PERMISSION(0) | SHELL_CMD_TYPE(SHELL_TYPE_CMD_MAIN), com, com_uart, com find[dev | part]);
 #endif // #ifdef DEBUG_MODE
 

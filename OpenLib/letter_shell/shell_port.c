@@ -16,7 +16,7 @@
 Shell shell;
 char shellBuffer[512];
 
-#ifdef DEBUG_MODE
+#if defined(__SHELL_H__) && defined(DEBUG_MODE)
 // shell导出到命令列表里
 //                       权限设置                                命令类型            命令名称      命令实体      命令说明
 // SHELL_EXPORT_CMD(SHELL_CMD_PERMISSION(0) | SHELL_CMD_TYPE(SHELL_TYPE_CMD_FUNC), ef_print_env, ef_print_env, ef print env);
@@ -26,7 +26,7 @@ int test2(int i1, int i2, int i3, int i4, int i5, int i6, int i7, int i8)
     printf("input int: %d, %d, %d, %d, %d, %d, %d, %d\r\n", i1, i2, i3, i4, i5, i6, i7, i8);
     return 0;
 }
-//导出到命令列表里
+// 导出到命令列表里
 SHELL_EXPORT_CMD(SHELL_CMD_PERMISSION(0) | SHELL_CMD_TYPE(SHELL_TYPE_CMD_FUNC), test2, test2, test2);
 
 /* SHELL_USING_CMD_EXPORT == 1需要把这个打开 */

@@ -765,6 +765,16 @@
           </Files>
         </Group>
         <Group>
+          <GroupName>UserApp</GroupName>
+          <Files>
+            <File>
+              <FileName>main.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\main.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
           <GroupName>OpenLib/KFIFO</GroupName>
           <Files>
             <File>
@@ -856,16 +866,6 @@
               <FileName>shell_port.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\OpenLib\letter_shell\shell_port.c</FilePath>
-            </File>
-          </Files>
-        </Group>
-        <Group>
-          <GroupName>UserApp</GroupName>
-          <Files>
-            <File>
-              <FileName>main.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\User\main.c</FilePath>
             </File>
           </Files>
         </Group>

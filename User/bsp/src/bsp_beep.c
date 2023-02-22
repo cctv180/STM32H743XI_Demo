@@ -18,7 +18,7 @@
 
 #include "bsp.h"
 
-//#define BEEP_HAVE_POWER        /* 定义此行表示有源蜂鸣器，直接通过GPIO驱动, 无需PWM */
+// #define BEEP_HAVE_POWER        /* 定义此行表示有源蜂鸣器，直接通过GPIO驱动, 无需PWM */
 
 #ifdef BEEP_HAVE_POWER /* 有源蜂鸣器 */
 
@@ -99,8 +99,8 @@ void BEEP_Start(uint16_t _usBeepTime, uint16_t _usStopTime, uint16_t _usCycle)
     BEEP_ENABLE(); /* 开始发声 */
 }
 
-#ifdef DEBUG_MODE
-//导出到命令列表里
+#if defined(__SHELL_H__) && defined(DEBUG_MODE)
+// 导出到命令列表里
 SHELL_EXPORT_CMD(SHELL_CMD_PERMISSION(0) | SHELL_CMD_TYPE(SHELL_TYPE_CMD_FUNC), beep, BEEP_Start, beep t0 t1 cycle);
 #endif // ifdef DEBUG_MODE
 

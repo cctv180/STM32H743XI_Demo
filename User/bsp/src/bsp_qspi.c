@@ -601,7 +601,7 @@ void QSPI_MemoryMapped(void)
     }
 }
 
-#ifdef DEBUG_MODE
+#if defined(__SHELL_H__) && defined(DEBUG_MODE)
 static int cmd_qspi(int argc, char *argv[])
 {
 #define __is_print(ch) ((unsigned int)((ch) - ' ') < 127u - ' ')

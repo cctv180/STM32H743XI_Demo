@@ -588,7 +588,7 @@ uint32_t bsp_TestExtSDRAM2(void)
     return 0;
 }
 
-#ifdef DEBUG_MODE
+#if defined(__SHELL_H__) && defined(DEBUG_MODE)
 static int _cmd(int argc, char *argv[])
 {
 #define __is_print(ch) ((unsigned int)((ch) - ' ') < 127u - ' ')
