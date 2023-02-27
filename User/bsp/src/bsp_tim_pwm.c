@@ -525,7 +525,7 @@ void bsp_SetTIMforInt(TIM_TypeDef *TIMx, uint32_t _ulFreq, uint8_t _PreemptionPr
         ERROR_HANDLER();
     }
 
-#if 0  //使能定时器中断
+#if 0  // 使能定时器中断
     __HAL_TIM_ENABLE_IT(&TimHandle, TIM_IT_UPDATE);
 
     /* 配置TIM定时更新中断 (Update) */
