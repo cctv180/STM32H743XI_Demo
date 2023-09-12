@@ -18,3 +18,7 @@
 	path = OpenLib/dump_hex
 	url = https://github.com/cctv180/dump_hex
 	branch = main
+[submodule "OpenLib/base64/Lib"]
+	path = OpenLib/base64/Lib
+	url = https://github.com/zhicheng/base64
+	branch = master

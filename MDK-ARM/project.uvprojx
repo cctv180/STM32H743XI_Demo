@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32H743xx</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc\Legacy;..\Drivers\CMSIS\Device\ST\STM32H7xx\Include;..\Drivers\CMSIS\Include;..\User;..\User\bsp;..\User\bsp\inc;..\OpenLib\dump_hex;..\OpenLib\KFIFO;..\OpenLib\MultiButton;..\OpenLib\MultiTimer;..\OpenLib\MultiTimer\Lib;..\OpenLib\perf_counter;..\OpenLib\letter_shell;..\OpenLib\letter_shell\Lib\src</IncludePath>
+              <IncludePath>..\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc\Legacy;..\Drivers\CMSIS\Device\ST\STM32H7xx\Include;..\Drivers\CMSIS\Include;..\User;..\User\bsp;..\User\bsp\inc;..\OpenLib\dump_hex;..\OpenLib\base64\Lib;..\OpenLib\KFIFO;..\OpenLib\MultiButton;..\OpenLib\MultiTimer;..\OpenLib\MultiTimer\Lib;..\OpenLib\perf_counter;..\OpenLib\letter_shell;..\OpenLib\letter_shell\Lib\src</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -785,6 +785,21 @@
           </Files>
         </Group>
         <Group>
+          <GroupName>OpenLib/base64</GroupName>
+          <Files>
+            <File>
+              <FileName>base64_cmd.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\OpenLib\base64\base64_cmd.c</FilePath>
+            </File>
+            <File>
+              <FileName>base64.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\OpenLib\base64\Lib\base64.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
           <GroupName>OpenLib/KFIFO</GroupName>
           <Files>
             <File>
@@ -805,22 +820,17 @@
           </Files>
         </Group>
         <Group>
-          <GroupName>OpenLib/MultiTimer/src</GroupName>
-          <Files>
-            <File>
-              <FileName>MultiTimer.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\OpenLib\MultiTimer\Lib\MultiTimer.c</FilePath>
-            </File>
-          </Files>
-        </Group>
-        <Group>
-          <GroupName>OpenLib/MultiTimer/port</GroupName>
+          <GroupName>OpenLib/MultiTimer</GroupName>
           <Files>
             <File>
               <FileName>timer_port.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\OpenLib\MultiTimer\timer_port.c</FilePath>
+            </File>
+            <File>
+              <FileName>MultiTimer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\OpenLib\MultiTimer\Lib\MultiTimer.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -845,8 +855,13 @@
           </Files>
         </Group>
         <Group>
-          <GroupName>OpenLib/letter_shell/src</GroupName>
+          <GroupName>OpenLib/letter_shell</GroupName>
           <Files>
+            <File>
+              <FileName>shell_port.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\OpenLib\letter_shell\shell_port.c</FilePath>
+            </File>
             <File>
               <FileName>shell.c</FileName>
               <FileType>1</FileType>
@@ -866,16 +881,6 @@
               <FileName>shell_ext.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\OpenLib\letter_shell\Lib\src\shell_ext.c</FilePath>
-            </File>
-          </Files>
-        </Group>
-        <Group>
-          <GroupName>OpenLib/letter_shell/port</GroupName>
-          <Files>
-            <File>
-              <FileName>shell_port.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\OpenLib\letter_shell\shell_port.c</FilePath>
             </File>
           </Files>
         </Group>
