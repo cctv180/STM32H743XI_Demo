@@ -10,14 +10,14 @@
       <TargetName>project</TargetName>
       <ToolsetNumber>0x4</ToolsetNumber>
       <ToolsetName>ARM-ADS</ToolsetName>
-      <pCCUsed>6180000::V6.18::ARMCLANG</pCCUsed>
+      <pCCUsed>6190000::V6.19::ARMCLANG</pCCUsed>
       <uAC6>1</uAC6>
       <TargetOption>
         <TargetCommonOption>
           <Device>STM32H743XIHx</Device>
           <Vendor>STMicroelectronics</Vendor>
-          <PackID>Keil.STM32H7xx_DFP.2.8.0</PackID>
-          <PackURL>http://www.keil.com/pack/</PackURL>
+          <PackID>Keil.STM32H7xx_DFP.3.1.1</PackID>
+          <PackURL>https://www.keil.com/pack/</PackURL>
           <Cpu>IRAM(0x20000000-0x2001FFFF) IRAM2(0x24000000-0x2407FFFF) IROM(0x8000000-0x81FFFFF)  CLOCK(12000000) FPU3(DFPU) CPUTYPE("Cortex-M7") ELITTLE</Cpu>
           <FlashUtilSpec></FlashUtilSpec>
           <StartupFile></StartupFile>
@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32H743xx</Define>
               <Undefine></Undefine>
-              <IncludePath>../Inc;../Drivers/STM32H7xx_HAL_Driver/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32H7xx/Include;../Drivers/CMSIS/Include;../User;../User/bsp;../User/bsp/inc;../OpenLib/MultiButton;../OpenLib/KFIFO;../OpenLib/perf_counter;../OpenLib/letter_shell;../OpenLib/letter_shell/Lib/src;../OpenLib/MultiTimer;../OpenLib/MultiTimer/Lib</IncludePath>
+              <IncludePath>..\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc\Legacy;..\Drivers\CMSIS\Device\ST\STM32H7xx\Include;..\Drivers\CMSIS\Include;..\User;..\User\bsp;..\User\bsp\inc;..\OpenLib\dump_hex;..\OpenLib\KFIFO;..\OpenLib\MultiButton;..\OpenLib\MultiTimer;..\OpenLib\MultiTimer\Lib;..\OpenLib\perf_counter;..\OpenLib\letter_shell;..\OpenLib\letter_shell\Lib\src</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -771,6 +771,16 @@
               <FileName>main.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\User\main.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>OpenLib/dump_hex</GroupName>
+          <Files>
+            <File>
+              <FileName>dump_hex.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\OpenLib\dump_hex\dump_hex.c</FilePath>
             </File>
           </Files>
         </Group>

@@ -14,3 +14,7 @@
 	path = OpenLib/MultiTimer/Lib
 	url = https://github.com/0x1abin/MultiTimer
 	branch = development
+[submodule "OpenLib/dump_hex"]
+	path = OpenLib/dump_hex
+	url = https://github.com/cctv180/dump_hex
+	branch = main
