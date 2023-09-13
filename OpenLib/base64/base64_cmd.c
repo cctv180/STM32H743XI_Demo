@@ -22,158 +22,120 @@ static int _cmd(int argc, char *argv[])
 
     if (!strcmp(argv[1], "encode")) // 编码
     {
-        if ((!strcmp(argv[2], "hex")) || (!strcmp(argv[2], "str")))
+        if (!strcmp(argv[2], "hex"))
         {
-            if (argc > 3)
+            if (argc <= 3)
             {
-                char *buff = 0;
-                char *buff_hex = 0;
-                uint16_t size;
 
-                if (!strcmp(argv[2], "hex"))
-                {
-                    size = strlen(argv[3]);
-                    uint8_t spaceCount = 0;
-
-                    /* 计算空格数 */
-                    for (size_t i = 0; i < size; i++)
-                    {
-                        if (argv[3][i] == ' ')
-                        {
-                            spaceCount++;
-                        }
-                    }
-                    spaceCount += 2; // 至少2个数用于申请内存
-                    // printf("spaceCount = %d\r\n", spaceCount);
-
-                    /* 解码hex字符串 */
-                    buff_hex = malloc(spaceCount); // 申请内存
-                    char *p_end = argv[3];
-                    char *p_old = 0;
-
-                    size = 0; // 初始化hex长度
-                    if (buff_hex)
-                    {
-
-                        for (size_t i = 0; i < spaceCount; i++)
-                        {
-                            // 使用strtol函数将字符串转换为整数，并存储到buff_hex中
-                            buff_hex[i] = strtol(p_end, &p_end, 0);
-
-                            if (p_old != p_end)
-                            {
-                                p_old = p_end;
-                                size++; // 更新hex长度
-                            }
-                            else
-                            {
-                                printf("\r\nhex decode success.");
-                                dump_hex(buff_hex, size, size > 8 ? 16 : 8); // 打印数据块
-                                break;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        printf("buff_hex Low memory! size = %d\r\n", size);
-                    }
-                }
-                else
-                {
-                    /* 读取string成功 */
-                    size = strlen(argv[3]);
-                    printf("\r\nstr read success.");
-                    dump_hex(argv[3], size, size > 8 ? 16 : 8); // 打印数据块
-                }
-                /* base64编码 */
-                buff = malloc(BASE64_ENCODE_OUT_SIZE(size)); // 申请内存
-                if (buff)
-                {
-                    uint16_t len;
-                    if (!strcmp(argv[2], "hex"))
-                    {
-                        len = base64_encode((const uint8_t *)buff_hex, size, buff);
-                    }
-                    else
-                    {
-                        len = base64_encode((const uint8_t *)argv[3], size, buff);
-                    }
-                    printf("\r\nbase64 encode buff success.\r\n");
-                    printf("in size = %d out length = %d", size, len);
-                    size = len;                              // 实际长度
-                    dump_hex(buff, size, size > 8 ? 16 : 8); // 打印数据块
-                }
-                else
-                {
-                    printf("buff Low memory! size = %d\r\n", size);
-                }
-
-                free(buff);     // 释放内存
-                free(buff_hex); // 释放内存
-                return 0;
-            }
-            else
-            {
                 printf("write parameter Error.\r\n");
                 printf("%s ", argv[0]);
                 printf("%s ", argv[1]);
                 printf("%s ", argv[2]);
-                if (!strcmp(argv[2], "hex"))
-                {
-                    printf("\"0x** 0x** ...\"\r\n");
-                }
-                else
-                {
-                    printf("xxx String\r\n");
-                }
+                printf("\"0x** 0x** ...\"\r\n");
 
                 return -1;
             }
-        }
-        else
-        {
-            printf("write parameter Error.\r\n");
-            printf("%s ", argv[0]);
-            printf("%s\r\n", help_info[0]);
 
-            return -1;
-        }
-    }
-    else if (!strcmp(argv[1], "decode")) // 解码
-    {
-        if (argc > 2)
-        {
-            uint16_t size;
-            char *buff = 0;
+            uint16_t size = strlen(argv[3]);
+            uint8_t spaceCount = 0;
 
-            /* base64解码 */
-            size = strlen(argv[2]);
-            buff = malloc(BASE64_DECODE_OUT_SIZE(size));
-            if (buff)
+            /* 计算空格数 */
+            for (size_t i = 0; i < size; i++)
             {
-                uint16_t len;
-                len = base64_decode((const char *)argv[2], size, (uint8_t *)buff);
-
-                if (!len)
+                if (argv[3][i] == ' ')
                 {
-                    printf("base64 decode failed.\r\n");
-                    free(buff);
-
-                    return -1;
+                    spaceCount++;
                 }
-
-                printf("base64 decode buff success. in size = %d out length = %d\r\n",
-                       size, len);
-                size = len;                              // 实际长度
-                dump_hex(buff, size, size > 8 ? 16 : 8); // 打印数据块
-                free(buff);
-
-                return 0;
             }
-            else
+            spaceCount += 2; // 至少2个数用于申请内存
+            // printf("spaceCount = %d\r\n", spaceCount);
+
+            /* 解码hex字符串 */
+            char *buff_hex = malloc(spaceCount); // 申请内存
+            if (!buff_hex)
             {
-                printf("Low memory! size = %d\r\n", size);
+                printf("buff_hex Low memory! size = %d\r\n", spaceCount);
+
+                return -1;
             }
+            char *p_end = argv[3];
+            char *p_old = 0;
+            size = 0; // 初始化hex长度
+            for (size_t i = 0; i < spaceCount; i++)
+            {
+                // 使用strtol函数将字符串转换为整数，并存储到buff_hex中
+                buff_hex[i] = strtol(p_end, &p_end, 0);
+
+                if (p_old != p_end)
+                {
+                    p_old = p_end;
+                    size++; // 更新hex长度
+                }
+                else
+                {
+                    printf("\r\nhex decode success.");
+                    dump_hex(buff_hex, size, size > 8 ? 16 : 8); // 打印数据块
+                    break;
+                }
+            }
+
+            /* base64编码 */
+            char *buff = malloc(BASE64_ENCODE_OUT_SIZE(size)); // 申请内存
+            if (!buff)
+            {
+                printf("buff Low memory! size = %d\r\n", size);
+                /* 释放内存 */
+                free(buff_hex);
+
+                return -1;
+            }
+            uint16_t len;
+            len = base64_encode((const uint8_t *)buff_hex, size, buff);
+            printf("\r\nbase64 encode buff success.\r\n");
+            printf("in size = %d out length = %d", size, len);
+            size = len;                              // 实际长度
+            dump_hex(buff, size, size > 8 ? 16 : 8); // 打印数据块
+            printf("\r\n");
+
+            /* 释放内存 */
+            free(buff_hex);
+            free(buff);
+
+            return 0;
+        }
+        else if (!strcmp(argv[2], "str"))
+        {
+            if (argc <= 3)
+            {
+
+                printf("write parameter Error.\r\n");
+                printf("%s ", argv[0]);
+                printf("%s ", argv[1]);
+                printf("%s ", argv[2]);
+                printf("xxx string\r\n");
+
+                return -1;
+            }
+
+            uint16_t size = strlen(argv[3]);
+            /* base64编码 */
+            char *buff = malloc(BASE64_ENCODE_OUT_SIZE(size)); // 申请内存
+            if (!buff)
+            {
+                printf("buff Low memory! size = %d\r\n", size);
+
+                return -1;
+            }
+            uint16_t len;
+            len = base64_encode((const uint8_t *)argv[3], size, buff);
+            printf("\r\nbase64 encode buff success.\r\n");
+            printf("in size = %d out length = %d", size, len);
+            size = len;                              // 实际长度
+            dump_hex(buff, size, size > 8 ? 16 : 8); // 打印数据块
+            printf("\r\n");
+
+            /* 释放内存 */
+            free(buff);
 
             return 0;
         }
@@ -181,14 +143,56 @@ static int _cmd(int argc, char *argv[])
         {
             printf("write parameter Error.\r\n");
             printf("%s ", argv[0]);
+            printf("%s\r\n", help_info[0]);
+            return -1;
+        }
+    }
+    else if (!strcmp(argv[1], "decode")) // 解码
+    {
+
+        if (argc <= 2)
+        {
+            printf("write parameter Error.\r\n");
+            printf("%s ", argv[0]);
             printf("%s\r\n", help_info[1]);
 
             return -1;
         }
+
+        uint16_t size;
+        /* base64解码 */
+        size = strlen(argv[2]);
+        char *buff = malloc(BASE64_DECODE_OUT_SIZE(size));
+        if (!buff)
+        {
+            printf("Low memory! size = %d\r\n", size);
+        }
+
+        uint16_t len;
+        len = base64_decode((const char *)argv[2], size, (uint8_t *)buff);
+        if (!len)
+        {
+            printf("base64 decode failed.\r\n");
+
+            /* 释放内存 */
+            free(buff);
+
+            return -1;
+        }
+
+        printf("base64 decode buff success. in size = %d out length = %d\r\n",
+               size, len);
+        size = len;                              // 实际长度
+        dump_hex(buff, size, size > 8 ? 16 : 8); // 打印数据块
+
+        /* 释放内存 */
+        free(buff);
+
+        return 0;
     }
     else
     {
-        printf("Error Command\r\nUsage:\r\n");
+        printf("Error: Invalid command.\r\nUsage:\r\n");
         for (uint32_t i = 0; i < sizeof(help_info) / sizeof(char *); i++)
         {
             printf("%s ", argv[0]);
