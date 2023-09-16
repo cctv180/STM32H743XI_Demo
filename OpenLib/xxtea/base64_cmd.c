@@ -33,11 +33,13 @@ static int encode(int argc, char *argv[], int isHex)
         return -1;
     }
 
-    uint16_t size = strlen(argv[3]);
+    size_t size = strlen(argv[3]);
+    size_t len;
+    char *buff_hex = 0;
 
     if (isHex)
     {
-        /* HEX base64编码逻辑 */
+        /* HEX 逻辑 */
         uint8_t spaceCount = 0;
 
         /* 计算空格数 */
@@ -49,14 +51,12 @@ static int encode(int argc, char *argv[], int isHex)
             }
         }
         spaceCount += 2; // 至少2个数用于申请内存
-        // printf("spaceCount = %d\r\n", spaceCount);
 
         /* 解码hex字符串 */
-        char *buff_hex = malloc(spaceCount); // 申请内存
-        if (!buff_hex)
+        buff_hex = malloc(size); // 申请内存
+        if (buff_hex == NULL)
         {
             printf("buff_hex Low memory! size = %d\r\n", spaceCount);
-
             return -1;
         }
         char *p_end = argv[3];
@@ -74,55 +74,44 @@ static int encode(int argc, char *argv[], int isHex)
             }
             else
             {
-                printf("\r\nhex decode success.");
+                printf("hex decode success. in size = %d out length = %d", spaceCount, size);
                 dump_hex(buff_hex, size, size > 8 ? 16 : 8); // 打印数据块
+                printf("\r\n");
+
                 break;
             }
         }
-
-        /* base64编码 */
-        char *buff = malloc(BASE64_ENCODE_OUT_SIZE(size)); // 申请内存
-        if (!buff)
-        {
-            printf("buff Low memory! size = %d\r\n", size);
-            /* 释放内存 */
-            free(buff_hex);
-
-            return -1;
-        }
-        uint16_t len;
-        len = base64_encode((const uint8_t *)buff_hex, size, buff);
-        printf("\r\nbase64 encode buff success.\r\n");
-        printf("in size = %d out length = %d", size, len);
-        size = len;                              // 实际长度
-        dump_hex(buff, size, size > 8 ? 16 : 8); // 打印数据块
-        printf("\r\n");
-
-        /* 释放内存 */
-        free(buff_hex);
-        free(buff);
     }
     else
     {
-        /* 字符串base64编码逻辑 */
-        char *buff = malloc(BASE64_ENCODE_OUT_SIZE(size)); // 申请内存
-        if (!buff)
-        {
-            printf("buff Low memory! size = %d\r\n", size);
-
-            return -1;
-        }
-        uint16_t len;
-        len = base64_encode((const uint8_t *)argv[3], size, buff);
-        printf("\r\nbase64 encode buff success.\r\n");
-        printf("in size = %d out length = %d", size, len);
-        size = len;                              // 实际长度
-        dump_hex(buff, size, size > 8 ? 16 : 8); // 打印数据块
-        printf("\r\n");
-
-        /* 释放内存 */
-        free(buff);
+        buff_hex = argv[3];
     }
+
+    /* base64编码 */
+    char *buff = base64_encode((const uint8_t *)buff_hex, size);
+    if (buff == NULL)
+    {
+        printError("base64 decode failed.");
+        if (isHex)
+        {
+            free(buff_hex); // free memory
+        }
+
+        return -1;
+    }
+
+    len = strlen(buff);
+    printf("base64 encode success. in size = %d out length = %d", size, len);
+    size = len;                              // 实际长度
+    dump_hex(buff, size, size > 8 ? 16 : 8); // 打印数据块
+    printf("\r\n");
+
+    /* 释放内存 */
+    if (isHex)
+    {
+        free(buff_hex); // free memory
+    }
+    free(buff);
 
     return 0;
 }
@@ -138,29 +127,19 @@ static int decode(int argc, char *argv[])
     }
 
     /* base64解码逻辑 */
-    uint16_t size = strlen(argv[2]);
-    char *buff = malloc(BASE64_DECODE_OUT_SIZE(size));
-    if (!buff)
+    size_t len;
+    size_t size = strlen(argv[2]);
+    uint8_t *buff = base64_decode((const char *)argv[2], &len);
+    if (buff == NULL)
     {
-        printf("Low memory! size = %d\r\n", size);
-
+        printError("base64 decode failed.");
         return -1;
     }
 
-    uint16_t len = base64_decode((const char *)argv[2], size, (uint8_t *)buff);
-    if (!len)
-    {
-        printf("base64 decode failed.\r\n");
-
-        /* 释放内存 */
-        free(buff);
-
-        return -1;
-    }
-
-    printf("base64 decode buff success. in size = %d out length = %d\r\n", size, len);
+    printf("base64 decode success. in size = %d out length = %d", size, len);
     size = len;                              // 实际长度
     dump_hex(buff, size, size > 8 ? 16 : 8); // 打印数据块
+    printf("\r\n");
 
     /* 释放内存 */
     free(buff);

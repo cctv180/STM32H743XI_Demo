@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32H743xx</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc\Legacy;..\Drivers\CMSIS\Device\ST\STM32H7xx\Include;..\Drivers\CMSIS\Include;..\User;..\User\bsp;..\User\bsp\inc;..\OpenLib\dump_hex;..\OpenLib\base64\Lib;..\OpenLib\KFIFO;..\OpenLib\MultiButton;..\OpenLib\MultiTimer;..\OpenLib\MultiTimer\Lib;..\OpenLib\perf_counter;..\OpenLib\letter_shell;..\OpenLib\letter_shell\Lib\src</IncludePath>
+              <IncludePath>..\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc\Legacy;..\Drivers\CMSIS\Device\ST\STM32H7xx\Include;..\Drivers\CMSIS\Include;..\User;..\User\bsp;..\User\bsp\inc;..\OpenLib\dump_hex;..\OpenLib\xxtea\Lib;..\OpenLib\xxtea\Lib\example;..\OpenLib\KFIFO;..\OpenLib\MultiButton;..\OpenLib\MultiTimer;..\OpenLib\MultiTimer\Lib;..\OpenLib\perf_counter;..\OpenLib\letter_shell;..\OpenLib\letter_shell\Lib\src</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -785,17 +785,27 @@
           </Files>
         </Group>
         <Group>
-          <GroupName>OpenLib/base64</GroupName>
+          <GroupName>OpenLib/xxtea</GroupName>
           <Files>
             <File>
               <FileName>base64_cmd.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\OpenLib\base64\base64_cmd.c</FilePath>
+              <FilePath>..\OpenLib\xxtea\base64_cmd.c</FilePath>
+            </File>
+            <File>
+              <FileName>xxtea_cmd.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\OpenLib\xxtea\xxtea_cmd.c</FilePath>
             </File>
             <File>
               <FileName>base64.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\OpenLib\base64\Lib\base64.c</FilePath>
+              <FilePath>..\OpenLib\xxtea\Lib\example\base64.c</FilePath>
+            </File>
+            <File>
+              <FileName>xxtea.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\OpenLib\xxtea\Lib\xxtea.c</FilePath>
             </File>
           </Files>
         </Group>
