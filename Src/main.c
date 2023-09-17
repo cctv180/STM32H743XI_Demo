@@ -64,8 +64,8 @@ SDRAM_HandleTypeDef hsdram1;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_USART1_UART_Init(void);
 static void MX_DMA_Init(void);
+static void MX_USART1_UART_Init(void);
 static void MX_USART6_UART_Init(void);
 static void MX_QUADSPI_Init(void);
 static void MX_TIM5_Init(void);
@@ -114,8 +114,8 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_USART1_UART_Init();
   MX_DMA_Init();
+  MX_USART1_UART_Init();
   MX_USART6_UART_Init();
   MX_QUADSPI_Init();
   MX_TIM5_Init();
