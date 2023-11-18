@@ -203,7 +203,7 @@ typedef enum
 // #include "bsp_i2c_si4730.h"
 // #include "bsp_i2c_wm8978.h"
 
-// #include "bsp_tft_h7.h"
+#include "bsp_tft_h7.h"
 // #include "bsp_tft_429.h"
 // #include "bsp_tft_lcd.h"
 // #include "bsp_ts_touch.h"

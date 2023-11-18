@@ -480,6 +480,16 @@
               <FilePath>../Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_sdram.c</FilePath>
             </File>
             <File>
+              <FileName>stm32h7xx_hal_ltdc.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_ltdc.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32h7xx_hal_ltdc_ex.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_ltdc_ex.c</FilePath>
+            </File>
+            <File>
               <FileName>stm32h7xx_hal_qspi.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_qspi.c</FilePath>
@@ -761,6 +771,11 @@
               <FileName>bsp_qspi.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\User\bsp\src\bsp_qspi.c</FilePath>
+            </File>
+            <File>
+              <FileName>bsp_tft_h7.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\bsp\src\bsp_tft_h7.c</FilePath>
             </File>
           </Files>
         </Group>
