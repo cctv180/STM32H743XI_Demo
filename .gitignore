@@ -17,6 +17,7 @@ MDK-ARM/*.scvd
 #MDK-ARM/JLink*
 MDK-ARM/JLinkLog.txt
 MDK-ARM/*.uvgui.*
+MDK-ARM/keil-build-viewer-record.txt
 *.uvoptx
 
 EmbeddedProject1/VisualGDB
