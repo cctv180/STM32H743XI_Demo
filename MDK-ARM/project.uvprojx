@@ -10,7 +10,7 @@
       <TargetName>project</TargetName>
       <ToolsetNumber>0x4</ToolsetNumber>
       <ToolsetName>ARM-ADS</ToolsetName>
-      <pCCUsed>6190000::V6.19::ARMCLANG</pCCUsed>
+      <pCCUsed>6210000::V6.21::ARMCLANG</pCCUsed>
       <uAC6>1</uAC6>
       <TargetOption>
         <TargetCommonOption>
@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32H743xx</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc\Legacy;..\Drivers\CMSIS\Device\ST\STM32H7xx\Include;..\Drivers\CMSIS\Include;..\User;..\User\bsp;..\User\bsp\inc;..\OpenLib\dump_hex;..\OpenLib\xxtea\Lib;..\OpenLib\xxtea\Lib\example;..\OpenLib\KFIFO;..\OpenLib\MultiButton;..\OpenLib\MultiTimer;..\OpenLib\MultiTimer\Lib;..\OpenLib\perf_counter;..\OpenLib\letter_shell;..\OpenLib\letter_shell\Lib\src</IncludePath>
+              <IncludePath>..\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc\Legacy;..\Drivers\CMSIS\Device\ST\STM32H7xx\Include;..\Drivers\CMSIS\Include;..\User;..\User\bsp;..\User\bsp\inc;..\OpenLib\utils_lib;..\OpenLib\xxtea\Lib;..\OpenLib\xxtea\Lib\example;..\OpenLib\KFIFO;..\OpenLib\MultiButton;..\OpenLib\MultiTimer;..\OpenLib\MultiTimer\Lib;..\OpenLib\perf_counter;..\OpenLib\letter_shell;..\OpenLib\letter_shell\Lib\src</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -787,15 +787,10 @@
               <FileType>1</FileType>
               <FilePath>..\User\main.c</FilePath>
             </File>
-          </Files>
-        </Group>
-        <Group>
-          <GroupName>OpenLib/dump_hex</GroupName>
-          <Files>
             <File>
-              <FileName>dump_hex.c</FileName>
+              <FileName>utils_lib.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\OpenLib\dump_hex\dump_hex.c</FilePath>
+              <FilePath>..\OpenLib\utils_lib\utils_lib.c</FilePath>
             </File>
           </Files>
         </Group>

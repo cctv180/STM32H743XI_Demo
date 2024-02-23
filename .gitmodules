@@ -14,11 +14,10 @@
 	path = OpenLib/MultiTimer/Lib
 	url = https://github.com/0x1abin/MultiTimer
 	branch = development
-[submodule "OpenLib/dump_hex"]
-	path = OpenLib/dump_hex
-	url = https://github.com/cctv180/dump_hex
-	branch = main
 [submodule "OpenLib/xxtea/Lib"]
 	path = OpenLib/xxtea/Lib
 	url = https://github.com/xxtea/xxtea-c
 	branch = master
+[submodule "OpenLib/utils_lib"]
+	path = OpenLib/utils_lib
+	url = https://github.com/cctv180/utils_lib

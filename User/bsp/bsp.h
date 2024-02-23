@@ -32,7 +32,7 @@
 #define BSP_INFO_EN
 
 /* 开启调试打印 */
-#define DEBUG_MODE
+#define DEBUG_MODE 1
 
 /*
  * 开启 Event Recorder组件 1开启 0关闭
