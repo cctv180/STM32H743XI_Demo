@@ -872,6 +872,11 @@
               <FileType>2</FileType>
               <FilePath>..\OpenLib\perf_counter\systick_wrapper_ual.s</FilePath>
             </File>
+            <File>
+              <FileName>perfc_port_default.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\OpenLib\perf_counter\perfc_port_default.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
