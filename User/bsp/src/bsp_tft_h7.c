@@ -300,7 +300,7 @@ static void MX_LTDC_Init(void)
     {
         ERROR_HANDLER();
     }
-#if 0
+
     pLayerCfg.WindowX0 = 0;
     pLayerCfg.WindowX1 = 300;
     pLayerCfg.WindowY0 = 0;
@@ -308,9 +308,9 @@ static void MX_LTDC_Init(void)
     pLayerCfg.PixelFormat = LTDC_PIXEL_FORMAT_RGB565;
     pLayerCfg.Alpha = 255;
     pLayerCfg.Alpha0 = 0;
-    pLayerCfg.BlendingFactor1 = LTDC_BLENDING_FACTOR1_CA;
-    pLayerCfg.BlendingFactor2 = LTDC_BLENDING_FACTOR2_CA;
-    pLayerCfg.FBStartAdress = 0xC0000000;
+    pLayerCfg.BlendingFactor1 = LTDC_BLENDING_FACTOR1_PAxCA;
+    pLayerCfg.BlendingFactor2 = LTDC_BLENDING_FACTOR2_PAxCA;
+    pLayerCfg.FBStartAdress = SDRAM_LCD_BUF1;
     pLayerCfg.ImageWidth = 1024;
     pLayerCfg.ImageHeight = 600;
     pLayerCfg.Backcolor.Blue = 0;
@@ -328,11 +328,11 @@ static void MX_LTDC_Init(void)
     pLayerCfg1.PixelFormat = LTDC_PIXEL_FORMAT_RGB565;
     pLayerCfg1.Alpha = 255;
     pLayerCfg1.Alpha0 = 0;
-    pLayerCfg1.BlendingFactor1 = LTDC_BLENDING_FACTOR1_CA;
-    pLayerCfg1.BlendingFactor2 = LTDC_BLENDING_FACTOR2_CA;
-    pLayerCfg1.FBStartAdress = 0;
-    pLayerCfg1.ImageWidth = 0;
-    pLayerCfg1.ImageHeight = 0;
+    pLayerCfg1.BlendingFactor1 = LTDC_BLENDING_FACTOR1_PAxCA;
+    pLayerCfg1.BlendingFactor2 = LTDC_BLENDING_FACTOR2_PAxCA;
+    pLayerCfg1.FBStartAdress = SDRAM_LCD_BUF2;
+    pLayerCfg1.ImageWidth = 1024;
+    pLayerCfg1.ImageHeight = 600;
     pLayerCfg1.Backcolor.Blue = 0;
     pLayerCfg1.Backcolor.Green = 0;
     pLayerCfg1.Backcolor.Red = 0;
@@ -340,7 +340,6 @@ static void MX_LTDC_Init(void)
     {
         ERROR_HANDLER();
     }
-#endif
 
     /* USER CODE BEGIN LTDC_Init 2 */
 
