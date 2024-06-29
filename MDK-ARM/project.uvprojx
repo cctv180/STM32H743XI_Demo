@@ -10,7 +10,7 @@
       <TargetName>project</TargetName>
       <ToolsetNumber>0x4</ToolsetNumber>
       <ToolsetName>ARM-ADS</ToolsetName>
-      <pCCUsed>6210000::V6.21::ARMCLANG</pCCUsed>
+      <pCCUsed>6220000::V6.22::ARMCLANG</pCCUsed>
       <uAC6>1</uAC6>
       <TargetOption>
         <TargetCommonOption>
@@ -81,7 +81,7 @@
           </BeforeMake>
           <AfterMake>
             <RunUserProg1>1</RunUserProg1>
-            <RunUserProg2>0</RunUserProg2>
+            <RunUserProg2>1</RunUserProg2>
             <UserProg1Name>CopyHex_Flash.bat</UserProg1Name>
             <UserProg2Name>fromelf.exe --text -a -c --output="!L_dis.asm" "!L"</UserProg2Name>
             <UserProg1Dos16Mode>0</UserProg1Dos16Mode>
@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32H743xx</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc;..\Drivers\STM32H7xx_HAL_Driver\Inc\Legacy;..\Drivers\CMSIS\Device\ST\STM32H7xx\Include;..\Drivers\CMSIS\Include;..\User;..\User\bsp;..\User\bsp\inc;..\OpenLib\utils_lib;..\OpenLib\xxtea\Lib;..\OpenLib\xxtea\Lib\example;..\OpenLib\KFIFO;..\OpenLib\MultiButton;..\OpenLib\MultiTimer;..\OpenLib\MultiTimer\Lib;..\OpenLib\perf_counter;..\OpenLib\letter_shell;..\OpenLib\letter_shell\Lib\src</IncludePath>
+              <IncludePath>../Inc;../Drivers/STM32H7xx_HAL_Driver/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32H7xx/Include;../Drivers/CMSIS/Include;../User;../User/bsp;../User/bsp/inc;../OpenLib/utils_lib;../OpenLib/xxtea/Lib;../OpenLib/xxtea/Lib/example;../OpenLib/KFIFO;../OpenLib/MultiButton;../OpenLib/MultiTimer;../OpenLib/MultiTimer/Lib;../OpenLib/perf_counter;../OpenLib/letter_shell;../OpenLib/letter_shell/Lib/src</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
