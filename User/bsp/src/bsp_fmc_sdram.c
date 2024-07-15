@@ -15,6 +15,7 @@
 *********************************************************************************************************
 */
 #include "bsp.h"
+#include "utils_lib.h"
 #include "bsp_fmc_sdram.h"
 
 /*
@@ -591,9 +592,6 @@ uint32_t bsp_TestExtSDRAM2(void)
 #if defined(__SHELL_H__) && defined(DEBUG_MODE)
 static int _cmd(int argc, char *argv[])
 {
-#define __is_print(ch) ((unsigned int)((ch) - ' ') < 127u - ' ')
-#define HEXDUMP_WIDTH 16
-
     const char *help_info[] = {
         "set init/deinit",
         "test 1/2",
@@ -658,7 +656,7 @@ static int _cmd(int argc, char *argv[])
                        argv[0], argv[1], argv[2]);
                 return -1;
             }
-            uint32_t add = AsciiToUint32(argv[3]);
+            uint32_t add = (uint32_t)strtoul(argv[3], NULL, 0);
             add = (add & (EXT_SDRAM_SIZE - 1)) + EXT_SDRAM_ADDR;
             add &= ~0x3UL; // 4字节对齐访问
             printf("address = 0x%08x\r\n", add);
@@ -675,61 +673,12 @@ static int _cmd(int argc, char *argv[])
                        argv[0], argv[1], argv[2]);
                 return -1;
             }
-            uint32_t add = AsciiToUint32(argv[3]);
+            uint32_t add = (uint32_t)strtoul(argv[3], NULL, 0);
             uint16_t size = atoi(argv[4]);
-            uint8_t *buff = malloc(size);
             add = (add & (EXT_SDRAM_SIZE - 1)) + EXT_SDRAM_ADDR;
-            printf("address = 0x%08x\r\n", add);
 
-            if (buff)
-            {
-                printf("Read buff success. add = %d 0x%08x size = %d.\r\nThe data is:\r\n", add, add, size);
-
-                for (uint32_t i = 0; i < size; i++)
-                {
-                    buff[i] = *(uint8_t *)add;
-                    add++;
-                }
-
-                printf("Offset (h) 00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F\r\n");
-                for (uint16_t i = 0; i < size; i += HEXDUMP_WIDTH)
-                {
-                    printf("[%08X] ", i);
-                    /* dump hex */
-                    for (uint16_t j = 0; j < HEXDUMP_WIDTH; j++)
-                    {
-                        if (i + j < size)
-                        {
-                            printf("%02X ", buff[i + j]);
-                        }
-                        else
-                        {
-                            printf("   ");
-                        }
-                    }
-                    /* dump char for hex */
-                    for (uint16_t j = 0; j < HEXDUMP_WIDTH; j++)
-                    {
-                        if (i + j < size)
-                        {
-                            printf("%c", __is_print(buff[i + j]) ? buff[i + j] : '.');
-                        }
-                    }
-                    printf("\r\n");
-                }
-                printf("\r\n");
-
-                if (buff != NULL)
-                {
-                    free(buff);
-                }
-
-                return 0;
-            }
-            else
-            {
-                printf("Low memory! size = %d\r\n", size);
-            }
+            /* 调用原始的dump_hex函数 */
+            dump_hex((const void *)add, size, 16);
         }
         else
         {
@@ -752,9 +701,8 @@ static int _cmd(int argc, char *argv[])
 
                 return -1;
             }
-
-            uint32_t add = AsciiToUint32(argv[3]);
-            uint32_t data = AsciiToUint32(argv[4]);
+            uint32_t add = (uint32_t)strtoul(argv[3], NULL, 0);
+            uint32_t data = (uint32_t)strtoul(argv[4], NULL, 0);
             add = (add & (EXT_SDRAM_SIZE - 1)) + EXT_SDRAM_ADDR;
             add &= ~0x3UL; // 4字节对齐访问
             printf("address = 0x%08x\r\n", add);
@@ -773,8 +721,8 @@ static int _cmd(int argc, char *argv[])
 
                 return -1;
             }
-            uint32_t add = AsciiToUint32(argv[3]);
-            uint32_t len = str_len(argv[4]);
+            uint32_t add = (uint32_t)strtoul(argv[3], NULL, 0);
+            uint32_t len = strlen(argv[4]);
             add = (add & (EXT_SDRAM_SIZE - 1)) + EXT_SDRAM_ADDR;
             printf("address = 0x%08x\r\n", add);
 

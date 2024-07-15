@@ -760,7 +760,7 @@ static int cmd_qspi(int argc, char *argv[])
                     return -1;
                 }
 
-                QSPI_WriteBuffer((uint8_t *)argv[4], atoi(argv[3]), str_len(argv[4]));
+                QSPI_WriteBuffer((uint8_t *)argv[4], atoi(argv[3]), strlen(argv[4]));
 
                 return 0;
             }

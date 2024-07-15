@@ -1565,7 +1565,7 @@ static int com_uart(int argc, char *argv[])
         {
             if (argc >= 3)
             {
-                comSendBuf((COM_PORT_E)com_num, (uint8_t *)argv[2], str_len(argv[2]));
+                comSendBuf((COM_PORT_E)com_num, (uint8_t *)argv[2], strlen(argv[2]));
             }
             else
             {
