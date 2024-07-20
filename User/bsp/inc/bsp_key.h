@@ -51,19 +51,8 @@ void bsp_PutKey(uint8_t _KeyCode);
 uint8_t bsp_GetKey(void);
 uint8_t bsp_GetKeyState(KEY_ID_E _ucKeyID);
 void bsp_ClearKey(void);
+void bsp_KeyScan5ms(void);
 
-/*
-*********************************************************************************************************
-*    函 数 名: bsp_KeyScan5ms
-*    功能说明: 扫描所有按键。非阻塞，被systick中断周期性的调用，5ms一次
-*    形    参: 无
-*    返 回 值: 无
-*********************************************************************************************************
-*/
-inline void bsp_KeyScan5ms(void)
-{
-    button_ticks();
-}
 #endif
 
 /***************************** 安富莱电子 www.armfly.com (END OF FILE) *********************************/
