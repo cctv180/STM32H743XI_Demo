@@ -1052,7 +1052,7 @@ int comSetBaud(COM_PORT_E _ucPort, uint32_t _BaudRate)
                 }
             } /* if ( (lpuart_ker_ck_pres < (3 * huart->Init.BaudRate) ) ||
                       (lpuart_ker_ck_pres > (4096 * huart->Init.BaudRate) )) */
-        }     /* if (pclk != 0) */
+        } /* if (pclk != 0) */
     }
     /* Check UART Over Sampling to set Baud Rate Register */
     else if (huart->Init.OverSampling == UART_OVERSAMPLING_8)
@@ -1421,191 +1421,157 @@ void bsp_InitUart(void)
 #if defined(__SHELL_H__) && defined(DEBUG_MODE)
 static int com_uart(int argc, char *argv[])
 {
-#define __is_print(ch) ((unsigned int)((ch) - ' ') < 127u - ' ')
-#define HEXDUMP_WIDTH 16
-
-#define CMD_PROBE_INDEX 0
-#define CMD_READ_INDEX 1
-#define CMD_WRITE_INDEX 2
-#define CMD_CLEAR_INDEX 3
-#define CMD_BAUD_INDEX 4
-
     static int8_t com_num = 0;
-
-    int result = 0;
-    uint16_t length = 0;
-    uint16_t size;
-    uint8_t *buff = NULL;
-    uint8_t data = 0;
-    size_t i = 0, j = 0;
 
     const char *help_info[] =
         {
-            [CMD_PROBE_INDEX] = "com probe Select Uart 1 - 8",
-            [CMD_READ_INDEX] = "com read mode size",
-            [CMD_WRITE_INDEX] = "com write xxx",
-            [CMD_CLEAR_INDEX] = "com clear",
-            [CMD_BAUD_INDEX] = "com baud XXX",
+            "probe Select Uart 1 - 8",
+            "read len char buff",
+            "write xxx",
+            "clear",
+            "baud XXX",
         };
 
-    // printf("\r\nargc = %d\r\n\r\n", argc);
-
-    if (argc < 2)
+    if (!strcmp(argv[1], "probe")) // 选择串口号
     {
-        printf("Usage:\r\n");
-        for (i = 0; i < sizeof(help_info) / sizeof(char *); i++)
+        com_num = atoi(argv[2]);
+
+        if (!ComToUart(com_num)) // 串口号错误列出串口
         {
+            com_num = 0;
+            printf("COM Select Error(Range");
+            for (uint8_t i = 0; i <= 8; i++)
+            {
+                if ((ComToUart(i)))
+                {
+                    printf(" %d", i);
+                }
+            }
+            printf(").\r\n");
+
+            return 0;
+        }
+
+        printf("COM Select %d OK\r\n", com_num);
+
+        return 0;
+    }
+    else if (!strcmp(argv[1], "read"))
+    {
+        if (argc >= 2 && !strcmp(argv[2], "len"))
+        {
+            uint16_t length = comGetLen((COM_PORT_E)com_num);
+            printf("length = %d\r\n", length);
+
+            return 0;
+        }
+        else if (argc >= 2 && !strcmp(argv[2], "char"))
+        {
+            uint8_t data;
+            if (comGetChar((COM_PORT_E)com_num, &data))
+            {
+                printf("read char = 0x%02X(%c)\r\n", data, data);
+            }
+            else
+            {
+                printf("read char NULL\r\n");
+            }
+
+            return 0;
+        }
+        else if (argc >= 2 && !strcmp(argv[2], "buff"))
+        {
+            if (argc >= 4)
+            {
+
+                uint16_t length = atoi(argv[3]);
+                uint8_t *buff = malloc(length);
+                if (!buff)
+                {
+                    printf("Low memory!\r\n");
+
+                    return -1;
+                }
+                size_t size = comGetBuf((COM_PORT_E)com_num, buff, length);
+                if (size)
+                {
+                    dump_hex(buff, size, 16);
+                }
+                else
+                {
+                    printf("read buff NULL\r\n");
+                }
+
+                free(buff);
+            }
+            else
+            {
+                printf("parameter Error.\r\ncom buff [len]\r\n");
+            }
+        }
+        else
+        {
+            printf("parameter Error.\r\n");
+            printf("%s ", argv[0]);
+            printf("%s\r\n", help_info[1]);
+            return -1;
+        }
+        printf("Select COM%d Read\r\n", com_num);
+    }
+    else if (!strcmp(argv[1], "write"))
+    {
+        if (argc >= 3)
+        {
+            comSendBuf((COM_PORT_E)com_num, (uint8_t *)argv[2], strlen(argv[2]));
+        }
+        else
+        {
+            printf("write parameter Error.\r\n");
+            printf("%s ", argv[0]);
+            printf("%s\r\n", help_info[2]);
+            return -1;
+        }
+    }
+    else if (!strcmp(argv[1], "clear"))
+    {
+        comClearRxFifo((COM_PORT_E)com_num);
+        comClearTxFifo((COM_PORT_E)com_num);
+    }
+    else if (!strcmp(argv[1], "baud"))
+    {
+        uint32_t baud;
+        if (argc >= 3)
+        {
+            baud = strtol(argv[2], NULL, 0);
+            if (baud)
+            {
+                return comSetBaud((COM_PORT_E)com_num, baud);
+            }
+            else
+            {
+                printf("com baud error = 0\r\n");
+            }
+        }
+        else
+        {
+            printf("parameter Error.\r\n");
+            printf("%s ", argv[0]);
+            printf("%s\r\n", help_info[4]);
+            return -1;
+        }
+    }
+    else
+    {
+        printf("Error Command\r\nUsage:\r\n");
+        for (uint32_t i = 0; i < sizeof(help_info) / sizeof(char *); i++)
+        {
+            printf("%s ", argv[0]);
             printf("%s\r\n", help_info[i]);
         }
         printf("\r\n");
     }
-    else
-    {
-        const char *operator= argv[1];
-        if (!strcmp(operator, "probe")) // 选择串口号
-        {
-            com_num = atoi(argv[2]);
-            if ((ComToUart(com_num)) != 0)
-            {
-                printf("COM Select %d OK\r\n", com_num);
-            }
-            else
-            {
-                com_num = -1;
 
-                // printf("COM Select Error(Range 1 - 8).\r\n");
-                printf("COM Select Error(Range");
-                for (uint8_t i = 0; i <= 8; i++)
-                {
-                    if ((ComToUart(i)) != 0)
-                    {
-                        printf(" %d", i);
-                    }
-                }
-                printf(").\r\n");
-            }
-        }
-        else if (!strcmp(operator, "read"))
-        {
-            if (argc >= 2 && !strcmp(argv[2], "len"))
-            {
-                length = comGetLen((COM_PORT_E)com_num);
-                printf("length = %d\r\n", length);
-            }
-            else if (argc >= 2 && !strcmp(argv[2], "char"))
-            {
-
-                if (comGetChar((COM_PORT_E)com_num, &data))
-                {
-                    printf("read char = 0x%02X(%c)\r\n", data, data);
-                }
-                else
-                {
-                    printf("read char NULL\r\n");
-                }
-            }
-            else if (argc >= 2 && !strcmp(argv[2], "buff"))
-            {
-                if (argc >= 4)
-                {
-
-                    length = atoi(argv[3]);
-                    buff = malloc(length);
-                    if (buff)
-                    {
-                        size = comGetBuf((COM_PORT_E)com_num, buff, length);
-
-                        printf("Read buff success. size = %d. The data is:\r\n", size);
-                        printf("Offset (h) 00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F\r\n");
-                        for (i = 0; i < size; i += HEXDUMP_WIDTH)
-                        {
-                            printf("[%08X] ", i);
-                            /* dump hex */
-                            for (j = 0; j < HEXDUMP_WIDTH; j++)
-                            {
-                                if (i + j < size)
-                                {
-                                    printf("%02X ", buff[i + j]);
-                                }
-                                else
-                                {
-                                    printf("   ");
-                                }
-                            }
-                            /* dump char for hex */
-                            for (j = 0; j < HEXDUMP_WIDTH; j++)
-                            {
-                                if (i + j < size)
-                                {
-                                    printf("%c", __is_print(buff[i + j]) ? buff[i + j] : '.');
-                                }
-                            }
-                            printf("\r\n");
-                        }
-                        printf("\r\n");
-                    }
-                    else
-                    {
-                        printf("Low memory!\r\n");
-                    }
-                }
-                else
-                {
-                    printf("read parameter Error.\r\ncom buff [len]\r\n");
-                }
-            }
-            else
-            {
-                printf("read parameter Error.\r\ncom read [len | char | buff]\r\n");
-                result = -1;
-            }
-            printf("Select COM%d Read\r\n", com_num);
-        }
-        else if (!strcmp(operator, "write"))
-        {
-            if (argc >= 3)
-            {
-                comSendBuf((COM_PORT_E)com_num, (uint8_t *)argv[2], strlen(argv[2]));
-            }
-            else
-            {
-                printf("read parameter Error.\r\ncom write ...\r\n");
-                result = -1;
-            }
-        }
-        else if (!strcmp(operator, "clear"))
-        {
-            comClearRxFifo((COM_PORT_E)com_num);
-            comClearTxFifo((COM_PORT_E)com_num);
-        }
-        else if (!strcmp(operator, "baud"))
-        {
-            uint32_t baud;
-            if (argc >= 3)
-            {
-                baud = strtol(argv[2], NULL, 0);
-                if (baud)
-                {
-                    return comSetBaud((COM_PORT_E)com_num, baud);
-                }
-                else
-                {
-                    printf("com baud error = 0\r\n");
-                }
-            }
-            else
-            {
-                printf("read parameter Error.\r\ncom baud xx\r\n");
-                result = -1;
-            }
-        }
-    }
-
-    if (buff != NULL)
-    {
-        free(buff);
-    }
-    return result;
+    return 0;
 }
 // 导出到命令列表里
 SHELL_EXPORT_CMD(SHELL_CMD_PERMISSION(0) | SHELL_CMD_TYPE(SHELL_TYPE_CMD_MAIN), com, com_uart, com find[dev | part]);

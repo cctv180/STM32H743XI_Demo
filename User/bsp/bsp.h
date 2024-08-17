@@ -159,6 +159,7 @@ typedef enum
 #include "shell_port.h"
 #include "MultiTimer.h"
 #include "timer_port.h"
+#include "utils_lib.h"
 
 /* 通过取消注释或者添加注释的方式控制是否包含底层驱动模块 */
 #include "bsp_dma.h"

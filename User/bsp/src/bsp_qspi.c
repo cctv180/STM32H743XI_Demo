@@ -604,9 +604,6 @@ void QSPI_MemoryMapped(void)
 #if defined(__SHELL_H__) && defined(DEBUG_MODE)
 static int cmd_qspi(int argc, char *argv[])
 {
-#define __is_print(ch) ((unsigned int)((ch) - ' ') < 127u - ' ')
-#define HEXDUMP_WIDTH 16
-
     static uint8_t s_probe = 0;
 
     const char *help_info[] = {
@@ -684,32 +681,8 @@ static int cmd_qspi(int argc, char *argv[])
 
                     QSPI_ReadBuffer(buff, add, size);
 
-                    printf("Offset (h) 00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F\r\n");
-                    for (uint16_t i = 0; i < size; i += HEXDUMP_WIDTH)
-                    {
-                        printf("[%08X] ", i);
-                        /* dump hex */
-                        for (uint16_t j = 0; j < HEXDUMP_WIDTH; j++)
-                        {
-                            if (i + j < size)
-                            {
-                                printf("%02X ", buff[i + j]);
-                            }
-                            else
-                            {
-                                printf("   ");
-                            }
-                        }
-                        /* dump char for hex */
-                        for (uint16_t j = 0; j < HEXDUMP_WIDTH; j++)
-                        {
-                            if (i + j < size)
-                            {
-                                printf("%c", __is_print(buff[i + j]) ? buff[i + j] : '.');
-                            }
-                        }
-                        printf("\r\n");
-                    }
+                    dump_hex(buff, size, 0);
+
                     printf("\r\n");
 
                     if (buff != NULL)
