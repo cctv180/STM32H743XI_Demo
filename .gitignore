@@ -4,7 +4,8 @@
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
 #删除目标文件(用于打包备份)
-.vscode
+.clangd
+compile_commands.json
 MDK-ARM/Objects
 MDK-ARM/Listings
 MDK-ARM/DebugConfig
@@ -14,38 +15,20 @@ MDK-ARM/*.bak
 MDK-ARM/*.dep
 MDK-ARM/*.uvguix.*
 MDK-ARM/*.scvd
-#MDK-ARM/JLink*
+MDK-ARM/JLink*
 MDK-ARM/JLinkLog.txt
 MDK-ARM/*.uvgui.*
 MDK-ARM/keil-build-viewer-record.txt
 *.uvoptx
 
+.vscode
+.mxproject
+
+EmbeddedProject1
 EmbeddedProject1/VisualGDB
+EmbeddedProject1/.visualgdb
 EmbeddedProject1/.vs
 EmbeddedProject1/*.vcxproj.user
-EmbeddedProject1
-
-EWARM/bin
-EWARM/obj
-EWARM/settings
-EWARM/.vs
-
-EWARM/settings/*.crun
-EWARM/settings/*.dnx
-EWARM/settings/*.cspy
-EWARM/settings/*.general.xcl
-EWARM/settings/*.wsdt
-EWARM/settings/*.cspy.bat
-EWARM/settings/*.dbgdt
-EWARM/settings/*.ps1
-EWARM/stm32f4.dep
-EWARM/*.sln
-EWARM/*.vcxproj
-EWARM/*.filters
-EWARM/*.opendb
-EWARM/*VC.db
-EWARM/IAR_Gen.lua
-EWARM/*.user
 
 # User-specific files
 *.rsuser
