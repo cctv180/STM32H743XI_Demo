@@ -90,6 +90,7 @@ void bsp_Init(void)
     BEEP_InitHard();          /* 初始化beep */
     userInitMultiTime();      /* 初始化MultiTime */
     bsp_InitTFT();            /* 初始化LCD */
+    bsp_Init_SD();            /* 初始化SD卡 */
 }
 
 /*
