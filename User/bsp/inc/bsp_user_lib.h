@@ -40,7 +40,7 @@ uint8_t lib_dec2bcd(uint8_t _dec);
 
 static __inline__ uint32_t roundup_pow_of_two(uint32_t _num) /* 找出最接近 最大2的指数次幂 */
 {
-#if 1
+#if 0
     //启用 STM32 硬件提供的计算前导零指令 CLZ
     if (_num != 0)
     {
