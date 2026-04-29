@@ -1,369 +1,122 @@
-/*
-*********************************************************************************************************
-*
-*    模块名称 : STM32H7内部LCD驱动程序
-*    文件名称 : bsp_tft_h7.c
-*    版    本 : V1.0
-*    说    明 : STM32F429 内部LCD接口的硬件配置程序。
-*    修改记录 :
-*        版本号  日期       作者    说明
-*        V1.0    2014-05-05 armfly 增加 STM32F429 内部LCD接口； 基于ST的例子更改，不要背景层和前景层定义，直接
-*                                  用 LTDC_Layer1 、 LTDC_Layer2, 这是2个结构体指针
-*        V1.1    2015-11-19 armfly
-*                        1. 绘图函数替换为DMA2D硬件驱动，提高绘图效率
-*                        2. 统一多种面板的配置函数，自动识别面板类型
-*
-*    Copyright (C), 2015-2020, 安富莱电子 www.armfly.com
-*
-*   LCD_TFT 同步时序配置（整理自官方做的一个截图，言简意赅）：
-*   ----------------------------------------------------------------------------
-*
-*                                                 Total Width
-*                             <--------------------------------------------------->
-*                       Hsync width HBP             Active Width                HFP
-*                             <---><--><--------------------------------------><-->
-*                         ____    ____|_______________________________________|____
-*                             |___|   |                                       |    |
-*                                     |                                       |    |
-*                         __|         |                                       |    |
-*            /|\    /|\  |            |                                       |    |
-*             | VSYNC|   |            |                                       |    |
-*             |Width\|/  |__          |                                       |    |
-*             |     /|\     |         |                                       |    |
-*             |  VBP |      |         |                                       |    |
-*             |     \|/_____|_________|_______________________________________|    |
-*             |     /|\     |         | / / / / / / / / / / / / / / / / / / / |    |
-*             |      |      |         |/ / / / / / / / / / / / / / / / / / / /|    |
-*    Total    |      |      |         |/ / / / / / / / / / / / / / / / / / / /|    |
-*    Heigh    |      |      |         |/ / / / / / / / / / / / / / / / / / / /|    |
-*             |Active|      |         |/ / / / / / / / / / / / / / / / / / / /|    |
-*             |Heigh |      |         |/ / / / / / Active Display Area / / / /|    |
-*             |      |      |         |/ / / / / / / / / / / / / / / / / / / /|    |
-*             |      |      |         |/ / / / / / / / / / / / / / / / / / / /|    |
-*             |      |      |         |/ / / / / / / / / / / / / / / / / / / /|    |
-*             |      |      |         |/ / / / / / / / / / / / / / / / / / / /|    |
-*             |      |      |         |/ / / / / / / / / / / / / / / / / / / /|    |
-*             |     \|/_____|_________|_______________________________________|    |
-*             |     /|\     |                                                      |
-*             |  VFP |      |                                                      |
-*            \|/    \|/_____|______________________________________________________|
-*
-*
-*     每个LCD设备都有自己的同步时序值：
-*     Horizontal Synchronization (Hsync)
-*     Horizontal Back Porch (HBP)
-*     Active Width
-*     Horizontal Front Porch (HFP)
-*
-*     Vertical Synchronization (Vsync)
-*     Vertical Back Porch (VBP)
-*     Active Heigh
-*     Vertical Front Porch (VFP)
-*
-*     LCD_TFT 窗口水平和垂直的起始以及结束位置 :
-*     ----------------------------------------------------------------
-*
-*     HorizontalStart = (Offset_X + Hsync + HBP);
-*     HorizontalStop  = (Offset_X + Hsync + HBP + Window_Width - 1);
-*     VarticalStart   = (Offset_Y + Vsync + VBP);
-*     VerticalStop    = (Offset_Y + Vsync + VBP + Window_Heigh - 1);
-*********************************************************************************************************
-*/
+/**
+ ******************************************************************************
+ * @file    bsp_tft_h7.c
+ * @brief   STM32H7 LTDC TFT 驱动实现
+ *
+ * @details
+ *   - 使用 STM32 HAL LTDC 驱动 RGB 并行 TFT。
+ *   - 显存位于外部 SDRAM (BANK1)，由 @c bsp_fmc_sdram 模块在启动时配置；
+ *     默认 Layer 0 = TFT_LAYER0_FB_ADDR (SDRAM_LCD_BUF1)，
+ *          Layer 1 = TFT_LAYER1_FB_ADDR (SDRAM_LCD_BUF2)。
+ *     framebuffer 地址在 bsp_tft_h7.h 中以宏形式集中暴露，方便覆盖。
+ *   - 背光使用 TIM1_CH1 / PA8 输出 PWM，由 @c bsp_tim_pwm 模块封装。
+ *   - 通过 @ref bsp_SelectTFT 在初始化前选择面板，运行期支持
+ *     @ref bsp_DeInitTFT / @ref bsp_InitTFT 切换面板。
+ *
+ * @section msp_compat 与 CubeMX 的兼容性
+ *   本文件中的 @c HAL_LTDC_MspInit / @c HAL_LTDC_MspDeInit 在结构上、PLL3
+ *   时钟参数与 GPIO 引脚分组上 ，与 CubeMX 生成的
+ *   @c Src/stm32h7xx_hal_msp.c 完全对齐。这样设计的目的：
+ *   - @c Src/stm32h7xx_hal_msp.c 在 .uvprojx 中被设置为
+ *     @c IncludeInBuild=0 ，**始终不参与构建**，仅作为 CubeMX 重新生成后
+ *     与 BSP 进行人工 diff / 移植的参考源；
+ *   - 当 CubeMX 重新生成 MSP 后，开发者只需把 @c HAL_LTDC_MspInit /
+ *     @c HAL_LTDC_MspDeInit 的函数体直接复制到本文件对应位置即可，无需
+ *     重新设计 BSP 接口；
+ *   - 整个工程中 @c HAL_LTDC_MspInit / @c HAL_LTDC_MspDeInit 只有本文件
+ *     一份强符号，不会与 CubeMX 文件产生重复定义。
+ *
+ * @verbatim
+ *   LCD_TFT 同步时序 (整理自 ST 官方文档):
+ *
+ *                                                Total Width
+ *                            <--------------------------------------------------->
+ *                      Hsync width HBP             Active Width                HFP
+ *                            <---><--><--------------------------------------><-->
+ *                        ____    ____|_______________________________________|____
+ *                            |___|   |                                       |    |
+ *                                    |                                       |    |
+ *                            VBP     |          Active Display Area          |    |
+ *                            VFP     |_______________________________________|    |
+ *
+ *   每个面板都有自己的同步时序值: HSW / HBP / Active W / HFP, VSW / VBP /
+ *   Active H / VFP, 详见 lcd_cfg_list[]。
+ *
+ *   LTDC 寄存器层面的窗口起止 = 累加值, HAL 层使用 -1 表示半开区间。
+ * @endverbatim
+ *
+ * @copyright (C) 2026, Project Contributors
+ ******************************************************************************
+ */
 
-/* 包含头文件 ----------------------------------------------------------------*/
+/* Includes ------------------------------------------------------------------*/
 #include "bsp.h"
 #include "bsp_tft_h7.h"
 #include "bsp_fmc_sdram.h"
+#include "bsp_tim_pwm.h"
 
-/* 私有类型定义 --------------------------------------------------------------*/
+/* Private constants ---------------------------------------------------------*/
 
-/* 私有宏定义 ----------------------------------------------------------------*/
-#undef THIS
-#define THIS (lcd_cfg_list[lcd_type])
-
-/* 偏移地址计算公式:
-   Maximum width x Maximum Length x Maximum Pixel size (RGB565)，单位字节
-   => 800 x 480 x 2 =  768000 */
-#define BUFFER_OFFSET SDRAM_LCD_SIZE // (uint32_t)(g_LcdHeight * g_LcdWidth * 2)
-
-#define LCD_FRAME_BUFFER SDRAM_LCD_BUF1
-
-/* 私有变量 ------------------------------------------------------------------*/
-static LTDC_HandleTypeDef hltdc = {0};
-static uint8_t lcd_type = 0;
-const tft_cfg_t lcd_cfg_list[] = {
-    {"LCD7.0 1024X600 48MHz", 1024, 600, 20, 3, 140, 20, 160, 12}, // PLL3 M5 N192 P*2 Q20 R20 =48M
-    {"LCD4.3 480X272 10MHz", 480, 272, 1, 1, 40, 8, 5, 8},         // PLL3 M5 N192 P*2 Q20 R96 =10M
-    {"LCD7.0 800X480 20MHz", 800, 480, 1, 1, 46, 23, 210, 22},     // PLL3 M5 N192 P*2 Q20 R48 =20M
-    {"LCD7.0 800X480 30MHz", 800, 480, 88, 40, 48, 32, 13, 3},     // PLL3 M5 N192 P*2 Q20 R32 =30M
-    {"LCD10.0 1280X800 48MHz", 1280, 800, 140, 10, 10, 10, 10, 3}  // PLL3 M5 N192 P*2 Q20 R20 =48M
-
+/**
+ * @brief 各面板时序表。
+ *
+ * @note 像素时钟由 PLL3 产生:
+ *       PLL3VCO = HSE / PLL3M * PLL3N = 25 MHz / 5 * 192 = 960 MHz
+ *       LCDCLK  = PLL3VCO / PLL3R
+ *       当前 MspInit 固定使用 PLL3M=5/N=192/P=2/Q=20/R=20，对应 48 MHz 像素时钟。
+ *       若需切换像素时钟，请同步修改 @ref HAL_LTDC_MspInit 中的 PLL3R。
+ */
+static const tft_cfg_t s_lcd_cfg_list[TFT_PANEL_NUM] = {
+    [TFT_PANEL_LCD7_1024X600_48M] = {"LCD7.0 1024X600 48MHz", 1024, 600, 20, 3, 140, 20, 160, 12},
+    [TFT_PANEL_LCD43_480X272_10M] = {"LCD4.3 480X272 10MHz", 480, 272, 1, 1, 40, 8, 5, 8},
+    [TFT_PANEL_LCD7_800X480_20M] = {"LCD7.0 800X480 20MHz", 800, 480, 1, 1, 46, 23, 210, 22},
+    [TFT_PANEL_LCD7_800X480_30M] = {"LCD7.0 800X480 30MHz", 800, 480, 88, 40, 48, 32, 13, 3},
+    [TFT_PANEL_LCD10_1280X800_48M] = {"LCD10.0 1280X800 48MHz", 1280, 800, 140, 10, 10, 10, 10, 3},
 };
 
-/* 扩展变量 ------------------------------------------------------------------*/
+/* Private state -------------------------------------------------------------*/
 
-/* 私有函数原形 --------------------------------------------------------------*/
-static void MX_LTDC_Init(void);
+static struct
+{
+    LTDC_HandleTypeDef hltdc;
+    tft_panel_id_t panel;
+    uint8_t initialized;
+    uint8_t backlight; /* 0..100 */
+} s_tft = {
+    .panel = TFT_PANEL_DEFAULT,
+    .initialized = 0,
+    .backlight = TFT_BACKLIGHT_DEFAULT,
+};
 
-/* 函数体 --------------------------------------------------------------------*/
+#define TFT_CFG() (&s_lcd_cfg_list[s_tft.panel])
+
+/* Private function prototypes -----------------------------------------------*/
+static tft_status_t MX_LTDC_Init(void);
+static void tft_layer_config(uint32_t layer_idx, uint32_t fb_addr, uint8_t alpha);
+
+/* ===========================================================================
+ * HAL MSP — kept structurally identical to CubeMX-generated
+ * Src/stm32h7xx_hal_msp.c (PLL3 clock params + GPIO groups + AF), so that
+ * when CubeMX is re-run later the regenerated function bodies can be
+ * dropped in here verbatim. Src/stm32h7xx_hal_msp.c is excluded from the
+ * build (IncludeInBuild=0), this file owns the only strong definition.
+ * ===========================================================================*/
 
 /**
  * @brief LTDC MSP Initialization
- * This function configures the hardware resources used in this example
  * @param hltdc: LTDC handle pointer
- * @retval None
  */
 void HAL_LTDC_MspInit(LTDC_HandleTypeDef *hltdc)
 {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
     RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
-    if (hltdc->Instance == LTDC)
+
+    if (hltdc->Instance != LTDC)
     {
-        /* USER CODE BEGIN LTDC_MspInit 0 */
-
-        /* USER CODE END LTDC_MspInit 0 */
-
-        /** Initializes the peripherals clock
-         */
-        PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_LTDC;
-        PeriphClkInitStruct.PLL3.PLL3M = 5;
-        PeriphClkInitStruct.PLL3.PLL3N = 192;
-        PeriphClkInitStruct.PLL3.PLL3P = 2;
-        PeriphClkInitStruct.PLL3.PLL3Q = 20;
-        PeriphClkInitStruct.PLL3.PLL3R = 20;
-        PeriphClkInitStruct.PLL3.PLL3RGE = RCC_PLL3VCIRANGE_2;
-        PeriphClkInitStruct.PLL3.PLL3VCOSEL = RCC_PLL3VCOWIDE;
-        PeriphClkInitStruct.PLL3.PLL3FRACN = 0;
-        if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
-        {
-            ERROR_HANDLER();
-        }
-
-        /* Peripheral clock enable */
-        __HAL_RCC_LTDC_CLK_ENABLE();
-
-        __HAL_RCC_GPIOK_CLK_ENABLE();
-        __HAL_RCC_GPIOJ_CLK_ENABLE();
-        __HAL_RCC_GPIOI_CLK_ENABLE();
-        /**LTDC GPIO Configuration
-        PK5     ------> LTDC_B6
-        PK4     ------> LTDC_B5
-        PJ15     ------> LTDC_B3
-        PK6     ------> LTDC_B7
-        PK3     ------> LTDC_B4
-        PK7     ------> LTDC_DE
-        PJ14     ------> LTDC_B2
-        PJ12     ------> LTDC_B0
-        PJ13     ------> LTDC_B1
-        PI12     ------> LTDC_HSYNC
-        PI13     ------> LTDC_VSYNC
-        PI14     ------> LTDC_CLK
-        PK2     ------> LTDC_G7
-        PK0     ------> LTDC_G5
-        PK1     ------> LTDC_G6
-        PJ11     ------> LTDC_G4
-        PJ10     ------> LTDC_G3
-        PJ9     ------> LTDC_G2
-        PJ0     ------> LTDC_R1
-        PJ8     ------> LTDC_G1
-        PJ7     ------> LTDC_G0
-        PJ6     ------> LTDC_R7
-        PI15     ------> LTDC_R0
-        PJ1     ------> LTDC_R2
-        PJ5     ------> LTDC_R6
-        PJ2     ------> LTDC_R3
-        PJ3     ------> LTDC_R4
-        PJ4     ------> LTDC_R5
-        */
-        GPIO_InitStruct.Pin = GPIO_PIN_5 | GPIO_PIN_4 | GPIO_PIN_6 | GPIO_PIN_3 | GPIO_PIN_7 | GPIO_PIN_2 | GPIO_PIN_0 | GPIO_PIN_1;
-        GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-        GPIO_InitStruct.Pull = GPIO_NOPULL;
-        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-        GPIO_InitStruct.Alternate = GPIO_AF14_LTDC;
-        HAL_GPIO_Init(GPIOK, &GPIO_InitStruct);
-
-        GPIO_InitStruct.Pin = GPIO_PIN_15 | GPIO_PIN_14 | GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_11 | GPIO_PIN_10 | GPIO_PIN_9 | GPIO_PIN_0 | GPIO_PIN_8 | GPIO_PIN_7 | GPIO_PIN_6 | GPIO_PIN_1 | GPIO_PIN_5 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4;
-        GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-        GPIO_InitStruct.Pull = GPIO_NOPULL;
-        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-        GPIO_InitStruct.Alternate = GPIO_AF14_LTDC;
-        HAL_GPIO_Init(GPIOJ, &GPIO_InitStruct);
-
-        GPIO_InitStruct.Pin = GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15;
-        GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-        GPIO_InitStruct.Pull = GPIO_NOPULL;
-        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-        GPIO_InitStruct.Alternate = GPIO_AF14_LTDC;
-        HAL_GPIO_Init(GPIOI, &GPIO_InitStruct);
-
-        /* USER CODE BEGIN LTDC_MspInit 1 */
-
-        /* USER CODE END LTDC_MspInit 1 */
-    }
-}
-
-/**
- * @brief LTDC MSP De-Initialization
- * This function freeze the hardware resources used in this example
- * @param hltdc: LTDC handle pointer
- * @retval None
- */
-void HAL_LTDC_MspDeInit(LTDC_HandleTypeDef *hltdc)
-{
-    if (hltdc->Instance == LTDC)
-    {
-        /* USER CODE BEGIN LTDC_MspDeInit 0 */
-
-        /* USER CODE END LTDC_MspDeInit 0 */
-        /* Peripheral clock disable */
-        __HAL_RCC_LTDC_CLK_DISABLE();
-
-        /**LTDC GPIO Configuration
-        PK5     ------> LTDC_B6
-        PK4     ------> LTDC_B5
-        PJ15     ------> LTDC_B3
-        PK6     ------> LTDC_B7
-        PK3     ------> LTDC_B4
-        PK7     ------> LTDC_DE
-        PJ14     ------> LTDC_B2
-        PJ12     ------> LTDC_B0
-        PJ13     ------> LTDC_B1
-        PI12     ------> LTDC_HSYNC
-        PI13     ------> LTDC_VSYNC
-        PI14     ------> LTDC_CLK
-        PK2     ------> LTDC_G7
-        PK0     ------> LTDC_G5
-        PK1     ------> LTDC_G6
-        PJ11     ------> LTDC_G4
-        PJ10     ------> LTDC_G3
-        PJ9     ------> LTDC_G2
-        PJ0     ------> LTDC_R1
-        PJ8     ------> LTDC_G1
-        PJ7     ------> LTDC_G0
-        PJ6     ------> LTDC_R7
-        PI15     ------> LTDC_R0
-        PJ1     ------> LTDC_R2
-        PJ5     ------> LTDC_R6
-        PJ2     ------> LTDC_R3
-        PJ3     ------> LTDC_R4
-        PJ4     ------> LTDC_R5
-        */
-        HAL_GPIO_DeInit(GPIOK, GPIO_PIN_5 | GPIO_PIN_4 | GPIO_PIN_6 | GPIO_PIN_3 | GPIO_PIN_7 | GPIO_PIN_2 | GPIO_PIN_0 | GPIO_PIN_1);
-
-        HAL_GPIO_DeInit(GPIOJ, GPIO_PIN_15 | GPIO_PIN_14 | GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_11 | GPIO_PIN_10 | GPIO_PIN_9 | GPIO_PIN_0 | GPIO_PIN_8 | GPIO_PIN_7 | GPIO_PIN_6 | GPIO_PIN_1 | GPIO_PIN_5 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4);
-
-        HAL_GPIO_DeInit(GPIOI, GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15);
-
-        /* USER CODE BEGIN LTDC_MspDeInit 1 */
-
-        /* USER CODE END LTDC_MspDeInit 1 */
-    }
-}
-
-/**
- * @brief LTDC Initialization Function
- * @param None
- * @retval None
- */
-static void MX_LTDC_Init(void)
-{
-
-    /* USER CODE BEGIN LTDC_Init 0 */
-
-    /* USER CODE END LTDC_Init 0 */
-
-    LTDC_LayerCfgTypeDef pLayerCfg = {0};
-    LTDC_LayerCfgTypeDef pLayerCfg1 = {0};
-
-    /* USER CODE BEGIN LTDC_Init 1 */
-
-    /* USER CODE END LTDC_Init 1 */
-    hltdc.Instance = LTDC;
-    hltdc.Init.HSPolarity = LTDC_HSPOLARITY_AL;  // 水平同步极性
-    hltdc.Init.VSPolarity = LTDC_VSPOLARITY_AL;  // 垂直同步极性
-    hltdc.Init.DEPolarity = LTDC_DEPOLARITY_AL;  // 数据使能极性
-    hltdc.Init.PCPolarity = LTDC_PCPOLARITY_IPC; // 像素时钟极性
-
-    hltdc.Init.HorizontalSync = THIS.hsw - 1;                                  // 19;   水平同步宽度
-    hltdc.Init.VerticalSync = THIS.vsw - 1;                                    // 2;    垂直同步宽度
-    hltdc.Init.AccumulatedHBP = THIS.hsw + THIS.hbp - 1;                       // 159;  水平同步后沿宽度
-    hltdc.Init.AccumulatedVBP = THIS.vsw + THIS.vbp - 1;                       // 22;   垂直同步后沿高度
-    hltdc.Init.AccumulatedActiveW = THIS.hsw + THIS.hbp + THIS.pwidth - 1;     // 1183; 有效宽度
-    hltdc.Init.AccumulatedActiveH = THIS.vsw + THIS.vbp + THIS.pheight - 1;    // 622;  有效高度
-    hltdc.Init.TotalWidth = THIS.hsw + THIS.hbp + THIS.pwidth + THIS.hfp - 1;  // 1343; 总宽度
-    hltdc.Init.TotalHeigh = THIS.vsw + THIS.vbp + THIS.pheight + THIS.vfp - 1; // 634;  总高度
-
-    hltdc.Init.Backcolor.Red = 255;   // 屏幕背景层红色部分
-    hltdc.Init.Backcolor.Green = 255; // 屏幕背景层绿色部分
-    hltdc.Init.Backcolor.Blue = 255;  // 屏幕背景色蓝色部分
-    if (HAL_LTDC_Init(&hltdc) != HAL_OK)
-    {
-        ERROR_HANDLER();
+        return;
     }
 
-    pLayerCfg.WindowX0 = 0;
-    pLayerCfg.WindowX1 = 300;
-    pLayerCfg.WindowY0 = 0;
-    pLayerCfg.WindowY1 = 200;
-    pLayerCfg.PixelFormat = LTDC_PIXEL_FORMAT_RGB565;
-    pLayerCfg.Alpha = 255;
-    pLayerCfg.Alpha0 = 0;
-    pLayerCfg.BlendingFactor1 = LTDC_BLENDING_FACTOR1_PAxCA;
-    pLayerCfg.BlendingFactor2 = LTDC_BLENDING_FACTOR2_PAxCA;
-    pLayerCfg.FBStartAdress = SDRAM_LCD_BUF1;
-    pLayerCfg.ImageWidth = 1024;
-    pLayerCfg.ImageHeight = 600;
-    pLayerCfg.Backcolor.Blue = 0;
-    pLayerCfg.Backcolor.Green = 0;
-    pLayerCfg.Backcolor.Red = 0;
-    if (HAL_LTDC_ConfigLayer(&hltdc, &pLayerCfg, 0) != HAL_OK)
-    {
-        ERROR_HANDLER();
-    }
-
-    pLayerCfg1.WindowX0 = 200;
-    pLayerCfg1.WindowX1 = 600;
-    pLayerCfg1.WindowY0 = 200;
-    pLayerCfg1.WindowY1 = 600;
-    pLayerCfg1.PixelFormat = LTDC_PIXEL_FORMAT_RGB565;
-    pLayerCfg1.Alpha = 255;
-    pLayerCfg1.Alpha0 = 0;
-    pLayerCfg1.BlendingFactor1 = LTDC_BLENDING_FACTOR1_PAxCA;
-    pLayerCfg1.BlendingFactor2 = LTDC_BLENDING_FACTOR2_PAxCA;
-    pLayerCfg1.FBStartAdress = SDRAM_LCD_BUF2;
-    pLayerCfg1.ImageWidth = 1024;
-    pLayerCfg1.ImageHeight = 600;
-    pLayerCfg1.Backcolor.Blue = 0;
-    pLayerCfg1.Backcolor.Green = 0;
-    pLayerCfg1.Backcolor.Red = 0;
-    if (HAL_LTDC_ConfigLayer(&hltdc, &pLayerCfg1, 1) != HAL_OK)
-    {
-        ERROR_HANDLER();
-    }
-
-    /* USER CODE BEGIN LTDC_Init 2 */
-
-    /* USER CODE END LTDC_Init 2 */
-}
-
-/*
-*********************************************************************************************************
-*    函 数 名: bsp_ltdc_clk
-*    功能说明: 设置 LTDC 时钟
-*    形    参: 无
-*    返 回 值: 无
-*********************************************************************************************************
-*/
-void bsp_ltdc_clk(uint16_t _clk)
-{
-    /* LCD 时钟配置 */
-    /* PLL3_VCO Input       = HSE_VALUE / PLL3M         = 25MHz / 5 = 5MHz */
-    /* PLL3_VCO Output      = PLL3_VCO Input * PLL3N    = 5MHz * 192 = 960MHz */
-    /* PLLLCDCLK            = PLL3_VCO Output / PLL3R   = 960MHz / 20 = 48MHz */
-    /* LTDC clock frequency = PLLLCDCLK                 = 48MHz */
-    /* 当前这个配置方便用户使用 PLL3Q 输出的 48MHz 时钟供 USB使用 */
-    RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
-    /* Initializes the peripherals clock */
+    /* PLL3R -> LCD pixel clock = 48 MHz (PLL3Q=20 -> 48 MHz USB friendly) */
     PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_LTDC;
     PeriphClkInitStruct.PLL3.PLL3M = 5;
     PeriphClkInitStruct.PLL3.PLL3N = 192;
@@ -377,140 +130,518 @@ void bsp_ltdc_clk(uint16_t _clk)
     {
         ERROR_HANDLER();
     }
+
+    __HAL_RCC_LTDC_CLK_ENABLE();
+    __HAL_RCC_GPIOK_CLK_ENABLE();
+    __HAL_RCC_GPIOJ_CLK_ENABLE();
+    __HAL_RCC_GPIOI_CLK_ENABLE();
+
+    /**LTDC GPIO Configuration
+       PK0..7  -> LTDC_G5/G6/G7/B4/B5/B6/B7/DE
+       PJ0..15 -> LTDC_R0..R7 / G0..G4 / B0..B3
+       PI12..15-> LTDC_HSYNC / VSYNC / CLK / R0
+    */
+    GPIO_InitStruct.Pin = GPIO_PIN_5 | GPIO_PIN_4 | GPIO_PIN_6 | GPIO_PIN_3 |
+                          GPIO_PIN_7 | GPIO_PIN_2 | GPIO_PIN_0 | GPIO_PIN_1;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    GPIO_InitStruct.Alternate = GPIO_AF14_LTDC;
+    HAL_GPIO_Init(GPIOK, &GPIO_InitStruct);
+
+    GPIO_InitStruct.Pin = GPIO_PIN_15 | GPIO_PIN_14 | GPIO_PIN_12 | GPIO_PIN_13 |
+                          GPIO_PIN_11 | GPIO_PIN_10 | GPIO_PIN_9 | GPIO_PIN_0 |
+                          GPIO_PIN_8 | GPIO_PIN_7 | GPIO_PIN_6 | GPIO_PIN_1 |
+                          GPIO_PIN_5 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    GPIO_InitStruct.Alternate = GPIO_AF14_LTDC;
+    HAL_GPIO_Init(GPIOJ, &GPIO_InitStruct);
+
+    GPIO_InitStruct.Pin = GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    GPIO_InitStruct.Alternate = GPIO_AF14_LTDC;
+    HAL_GPIO_Init(GPIOI, &GPIO_InitStruct);
 }
 
-/*
-*********************************************************************************************************
-*    函 数 名: bsp_InitTFT
-*    功能说明: 初始化LCD
-*    形    参: 无
-*    返 回 值: 无
-*********************************************************************************************************
-*/
+/**
+ * @brief LTDC MSP De-Initialization
+ * @param hltdc: LTDC handle pointer
+ */
+void HAL_LTDC_MspDeInit(LTDC_HandleTypeDef *hltdc)
+{
+    if (hltdc->Instance != LTDC)
+    {
+        return;
+    }
+
+    __HAL_RCC_LTDC_CLK_DISABLE();
+
+    HAL_GPIO_DeInit(GPIOK, GPIO_PIN_5 | GPIO_PIN_4 | GPIO_PIN_6 | GPIO_PIN_3 |
+                               GPIO_PIN_7 | GPIO_PIN_2 | GPIO_PIN_0 | GPIO_PIN_1);
+
+    HAL_GPIO_DeInit(GPIOJ, GPIO_PIN_15 | GPIO_PIN_14 | GPIO_PIN_12 | GPIO_PIN_13 |
+                               GPIO_PIN_11 | GPIO_PIN_10 | GPIO_PIN_9 | GPIO_PIN_0 |
+                               GPIO_PIN_8 | GPIO_PIN_7 | GPIO_PIN_6 | GPIO_PIN_1 |
+                               GPIO_PIN_5 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4);
+
+    HAL_GPIO_DeInit(GPIOI, GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15);
+}
+
+/* ===========================================================================
+ * Private helpers
+ * ===========================================================================*/
+
+static void tft_layer_config(uint32_t layer_idx, uint32_t fb_addr, uint8_t alpha)
+{
+    const tft_cfg_t *cfg = TFT_CFG();
+    LTDC_LayerCfgTypeDef pLayerCfg = {0};
+
+    pLayerCfg.WindowX0 = 0;
+    pLayerCfg.WindowX1 = cfg->pwidth;
+    pLayerCfg.WindowY0 = 0;
+    pLayerCfg.WindowY1 = cfg->pheight;
+    pLayerCfg.PixelFormat = TFT_PIXEL_FORMAT;
+    pLayerCfg.Alpha = alpha;
+    pLayerCfg.Alpha0 = 0;
+    pLayerCfg.BlendingFactor1 = LTDC_BLENDING_FACTOR1_PAxCA;
+    pLayerCfg.BlendingFactor2 = LTDC_BLENDING_FACTOR2_PAxCA;
+    pLayerCfg.FBStartAdress = fb_addr;
+    pLayerCfg.ImageWidth = cfg->pwidth;
+    pLayerCfg.ImageHeight = cfg->pheight;
+    pLayerCfg.Backcolor.Red = 0;
+    pLayerCfg.Backcolor.Green = 0;
+    pLayerCfg.Backcolor.Blue = 0;
+
+    if (HAL_LTDC_ConfigLayer(&s_tft.hltdc, &pLayerCfg, layer_idx) != HAL_OK)
+    {
+        ERROR_HANDLER();
+    }
+}
+
+/**
+ * @brief LTDC 控制器初始化 (与 CubeMX MX_LTDC_Init 等价的可重入版本)。
+ */
+static tft_status_t MX_LTDC_Init(void)
+{
+    const tft_cfg_t *cfg = TFT_CFG();
+
+    /* pwidth==0 表示该面板槽位未启用 */
+    if (cfg->pwidth == 0 || cfg->pheight == 0)
+    {
+        return TFT_ERR;
+    }
+
+    s_tft.hltdc.Instance = LTDC;
+    s_tft.hltdc.Init.HSPolarity = LTDC_HSPOLARITY_AL;
+    s_tft.hltdc.Init.VSPolarity = LTDC_VSPOLARITY_AL;
+    s_tft.hltdc.Init.DEPolarity = LTDC_DEPOLARITY_AL;
+    s_tft.hltdc.Init.PCPolarity = LTDC_PCPOLARITY_IPC;
+
+    s_tft.hltdc.Init.HorizontalSync = cfg->hsw - 1;
+    s_tft.hltdc.Init.VerticalSync = cfg->vsw - 1;
+    s_tft.hltdc.Init.AccumulatedHBP = cfg->hsw + cfg->hbp - 1;
+    s_tft.hltdc.Init.AccumulatedVBP = cfg->vsw + cfg->vbp - 1;
+    s_tft.hltdc.Init.AccumulatedActiveW = cfg->hsw + cfg->hbp + cfg->pwidth - 1;
+    s_tft.hltdc.Init.AccumulatedActiveH = cfg->vsw + cfg->vbp + cfg->pheight - 1;
+    s_tft.hltdc.Init.TotalWidth = cfg->hsw + cfg->hbp + cfg->pwidth + cfg->hfp - 1;
+    s_tft.hltdc.Init.TotalHeigh = cfg->vsw + cfg->vbp + cfg->pheight + cfg->vfp - 1;
+
+    s_tft.hltdc.Init.Backcolor.Red = 255;
+    s_tft.hltdc.Init.Backcolor.Green = 255;
+    s_tft.hltdc.Init.Backcolor.Blue = 255;
+
+    if (HAL_LTDC_Init(&s_tft.hltdc) != HAL_OK)
+    {
+        ERROR_HANDLER();
+        return TFT_ERR;
+    }
+
+    /* Layer 0 (background) - 全屏 framebuffer，不透明 */
+    tft_layer_config(0U, TFT_LAYER0_FB_ADDR, 255U);
+
+#if (TFT_LAYER_COUNT >= 2)
+    /* Layer 1 (foreground) - 透明 overlay */
+    tft_layer_config(1U, TFT_LAYER1_FB_ADDR, 0U);
+#endif
+
+    return TFT_OK;
+}
+
+/* ===========================================================================
+ * Public API
+ * ===========================================================================*/
+
 void bsp_InitTFT(void)
 {
-    MX_LTDC_Init();
-    bsp_SetTIMOutPWM(GPIOA, GPIO_PIN_8, TIM1, 1, 20000, (50 * 10000) / 255);
+    if (s_tft.initialized)
+    {
+        return;
+    }
+
+    if (MX_LTDC_Init() != TFT_OK)
+    {
+        return;
+    }
+
+    s_tft.initialized = 1U;
+
+    TFT_SetBacklight(s_tft.backlight);
 }
 
-/*
-*********************************************************************************************************
-*    函 数 名: TFT_GetDescribe
-*    功能说明: 读取LCD的描述符号，用于显示
-*    形    参: 无
-*    返 回 值: char* 描述符字符串指针
-*********************************************************************************************************
-*/
-char *TFT_GetDescribe(void)
+tft_status_t bsp_DeInitTFT(void)
 {
-    return THIS.name;
+    if (!s_tft.initialized)
+    {
+        return TFT_ERR;
+    }
+
+    /* 只关闭背光硬件，不修改 s_tft.backlight，便于 init 后恢复原亮度 */
+    bsp_SetTIMOutPWM(TFT_BACKLIGHT_GPIO_PORT, TFT_BACKLIGHT_GPIO_PIN,
+                     TFT_BACKLIGHT_TIM, (uint8_t)TFT_BACKLIGHT_CHANNEL,
+                     (uint32_t)TFT_BACKLIGHT_FREQ, 0U);
+
+    if (HAL_LTDC_DeInit(&s_tft.hltdc) != HAL_OK)
+    {
+        return TFT_ERR;
+    }
+
+    s_tft.initialized = 0U;
+    return TFT_OK;
 }
 
-/*
-*********************************************************************************************************
-*    函 数 名: TFT_DispOn
-*    功能说明: 打开显示
-*    形    参: 无
-*    返 回 值: 无
-*********************************************************************************************************
-*/
+tft_status_t bsp_SelectTFT(tft_panel_id_t id)
+{
+    if ((uint32_t)id >= (uint32_t)TFT_PANEL_NUM)
+    {
+        return TFT_ERR;
+    }
+    /* 已初始化时禁止切换；调用者应先 DeInit */
+    if (s_tft.initialized)
+    {
+        return TFT_ERR;
+    }
+    s_tft.panel = id;
+    return TFT_OK;
+}
+
+tft_panel_id_t bsp_GetTFTPanelId(void)
+{
+    return s_tft.panel;
+}
+
+LTDC_HandleTypeDef *TFT_GetLtdcHandle(void)
+{
+    return &s_tft.hltdc;
+}
+
+const tft_cfg_t *TFT_GetCfg(void)
+{
+    return TFT_CFG();
+}
+
+const char *TFT_GetDescribe(void)
+{
+    return TFT_CFG()->name;
+}
+
+uint16_t TFT_GetWidth(void)
+{
+    return TFT_CFG()->pwidth;
+}
+
+uint16_t TFT_GetHeight(void)
+{
+    return TFT_CFG()->pheight;
+}
+
+uint32_t TFT_GetFrameBuffer(tft_layer_id_t layer)
+{
+    switch (layer)
+    {
+    case TFT_LAYER_BG:
+        return (uint32_t)TFT_LAYER0_FB_ADDR;
+    case TFT_LAYER_FG:
+        return (uint32_t)TFT_LAYER1_FB_ADDR;
+    default:
+        return 0U;
+    }
+}
+
 void TFT_DispOn(void)
 {
+    if (!s_tft.initialized)
+    {
+        return;
+    }
+    __HAL_LTDC_ENABLE(&s_tft.hltdc);
+    /* 若 backlight 当前为 0，恢复到默认亮度 */
+    TFT_SetBacklight(s_tft.backlight ? s_tft.backlight : (uint8_t)TFT_BACKLIGHT_DEFAULT);
 }
 
-/*
-*********************************************************************************************************
-*    函 数 名: TFT_DispOff
-*    功能说明: 关闭显示
-*    形    参: 无
-*    返 回 值: 无
-*********************************************************************************************************
-*/
 void TFT_DispOff(void)
 {
+    if (!s_tft.initialized)
+    {
+        return;
+    }
+    /* 直接关 PWM 输出，不改 s_tft.backlight，便于 On 时恢复关屏前亮度 */
+    bsp_SetTIMOutPWM(TFT_BACKLIGHT_GPIO_PORT, TFT_BACKLIGHT_GPIO_PIN,
+                     TFT_BACKLIGHT_TIM, (uint8_t)TFT_BACKLIGHT_CHANNEL,
+                     (uint32_t)TFT_BACKLIGHT_FREQ, 0U);
+    __HAL_LTDC_DISABLE(&s_tft.hltdc);
 }
 
-#if defined(__SHELL_H__) && defined(DEBUG_MODE)
-static int _cmd(int argc, char *argv[])
+void TFT_SetBacklight(uint8_t percent)
 {
-    const char *help_info[] = {"set init/deinit",
-                               "test 1/2"};
-    if (argc < 2)
+    if (percent > 100U)
     {
-        printf("Error:Missing command parameters.\r\nUsage:\r\n");
-        for (uint32_t i = 0; i < sizeof(help_info) / sizeof(char *); i++)
-        {
-            printf("%s ", argv[0]);
-            printf("%s\r\n", help_info[i]);
-        }
-        printf("\r\n");
-        return -1;
+        percent = 100U;
     }
+    /* bsp_SetTIMOutPWM 占空比范围 0..10000 (0.01% 分辨率) */
+    bsp_SetTIMOutPWM(TFT_BACKLIGHT_GPIO_PORT, TFT_BACKLIGHT_GPIO_PIN,
+                     TFT_BACKLIGHT_TIM, (uint8_t)TFT_BACKLIGHT_CHANNEL,
+                     (uint32_t)TFT_BACKLIGHT_FREQ,
+                     (uint32_t)percent * 100U);
+    s_tft.backlight = percent;
+}
 
-    if (strcmp(argv[1], "set") == 0)
+/* --- Layer control --------------------------------------------------------*/
+
+static tft_status_t tft_layer_check(tft_layer_id_t layer)
+{
+    if (!s_tft.initialized)
     {
-        if (argc < 3)
-        {
-            printf("Missing 'set' command parameters.\r\n");
-            printf("%s ", argv[0]);
-            printf("%s\r\n", help_info[0]);
-            return -1;
-        }
-
-        if (strcmp(argv[2], "init") == 0)
-        {
-            bsp_InitTFT();
-            return 0;
-        }
-        else if (strcmp(argv[2], "deinit") == 0)
-        {
-            if (hltdc.State == HAL_LTDC_STATE_RESET)
-            {
-                printf("Error:Do not repeatedly deinit LTDC.\r\n");
-                return -1;
-            }
-
-            return HAL_LTDC_DeInit(&hltdc);
-        }
-        else
-        {
-            printf("Invalid 'set' command parameter.\r\n");
-            printf("%s ", argv[0]);
-            printf("%s\r\n", help_info[0]);
-            return -1;
-        }
+        return TFT_ERR;
     }
-    else if (strcmp(argv[1], "test") == 0)
+    if ((uint32_t)layer > 1U)
     {
-#if 0
-        if (argc < 3)
-        {
-            printf("Missing 'test' command parameters.\r\n");
-            printf("%s ", argv[0]);
-            printf("%s\r\n", help_info[1]);
-            return -1;
-        }
-#endif
-        printf("Error:Unrealized function.\r\n");
-        return 0;
+        return TFT_ERR;
+    }
+    return TFT_OK;
+}
+
+tft_status_t TFT_LayerSetVisible(tft_layer_id_t layer, uint8_t visible)
+{
+    if (tft_layer_check(layer) != TFT_OK)
+    {
+        return TFT_ERR;
+    }
+    if (visible)
+    {
+        __HAL_LTDC_LAYER_ENABLE(&s_tft.hltdc, (uint32_t)layer);
     }
     else
     {
-        printf("Error Command\r\nUsage:\r\n");
-        for (uint32_t i = 0; i < sizeof(help_info) / sizeof(char *); i++)
+        __HAL_LTDC_LAYER_DISABLE(&s_tft.hltdc, (uint32_t)layer);
+    }
+    /* IMR/SRCR reload to apply LEN change */
+    __HAL_LTDC_RELOAD_IMMEDIATE_CONFIG(&s_tft.hltdc);
+    return TFT_OK;
+}
+
+tft_status_t TFT_LayerSetAlpha(tft_layer_id_t layer, uint8_t alpha)
+{
+    if (tft_layer_check(layer) != TFT_OK)
+    {
+        return TFT_ERR;
+    }
+    return (HAL_LTDC_SetAlpha(&s_tft.hltdc, alpha, (uint32_t)layer) == HAL_OK)
+               ? TFT_OK
+               : TFT_ERR;
+}
+
+tft_status_t TFT_LayerSetAddress(tft_layer_id_t layer, uint32_t addr)
+{
+    if (tft_layer_check(layer) != TFT_OK)
+    {
+        return TFT_ERR;
+    }
+    return (HAL_LTDC_SetAddress(&s_tft.hltdc, addr, (uint32_t)layer) == HAL_OK)
+               ? TFT_OK
+               : TFT_ERR;
+}
+
+tft_status_t TFT_LayerSetWindowPos(tft_layer_id_t layer, uint16_t x0, uint16_t y0)
+{
+    if (tft_layer_check(layer) != TFT_OK)
+    {
+        return TFT_ERR;
+    }
+    return (HAL_LTDC_SetWindowPosition(&s_tft.hltdc, x0, y0, (uint32_t)layer) == HAL_OK)
+               ? TFT_OK
+               : TFT_ERR;
+}
+
+tft_status_t TFT_LayerSetWindowSize(tft_layer_id_t layer, uint16_t width, uint16_t height)
+{
+    if (tft_layer_check(layer) != TFT_OK)
+    {
+        return TFT_ERR;
+    }
+    return (HAL_LTDC_SetWindowSize(&s_tft.hltdc, width, height, (uint32_t)layer) == HAL_OK)
+               ? TFT_OK
+               : TFT_ERR;
+}
+
+/* ===========================================================================
+ * Shell command (letter_shell)
+ * ===========================================================================*/
+#if defined(__SHELL_H__) && defined(DEBUG_MODE)
+
+static int _tft_cmd(int argc, char *argv[])
+{
+    static const char *help_info[] = {
+        "info                       - print panel info",
+        "init                       - initialise LTDC + backlight",
+        "deinit                     - de-initialise LTDC + backlight off",
+        "panel <id>                 - select panel id (must DeInit first)",
+        "list                       - list available panels",
+        "bl <0..100>                - set backlight percent",
+        "on                         - display on",
+        "off                        - display off",
+        "layer <id> show|hide       - enable/disable layer 0/1",
+        "layer <id> alpha <0..255>  - set per-layer alpha",
+        "layer <id> addr  <0xADDR>  - set framebuffer address",
+        "layer <id> pos   <x> <y>   - set window position",
+        "layer <id> size  <w> <h>   - set window size",
+    };
+
+    if (argc < 2)
+    {
+        printf("Usage:\r\n");
+        for (uint32_t i = 0; i < sizeof(help_info) / sizeof(help_info[0]); i++)
         {
-            printf("%s ", argv[0]);
-            printf("%s\r\n", help_info[i]);
+            printf("  %s %s\r\n", argv[0], help_info[i]);
         }
-        printf("\r\n");
         return -1;
     }
 
-    return 0;
+    if (strcmp(argv[1], "info") == 0)
+    {
+        const tft_cfg_t *cfg = TFT_GetCfg();
+        printf("panel id : %u\r\n", (unsigned)bsp_GetTFTPanelId());
+        printf("name     : %s\r\n", cfg->name);
+        printf("size     : %u x %u\r\n", cfg->pwidth, cfg->pheight);
+        printf("buf0     : 0x%08lX\r\n", (unsigned long)TFT_GetFrameBuffer(TFT_LAYER_BG));
+        printf("buf1     : 0x%08lX\r\n", (unsigned long)TFT_GetFrameBuffer(TFT_LAYER_FG));
+        printf("init     : %u\r\n", (unsigned)s_tft.initialized);
+        printf("backlight: %u %%\r\n", (unsigned)s_tft.backlight);
+        return 0;
+    }
+
+    if (strcmp(argv[1], "list") == 0)
+    {
+        for (uint32_t i = 0; i < (uint32_t)TFT_PANEL_NUM; i++)
+        {
+            printf("  [%lu] %s (%u x %u)\r\n",
+                   (unsigned long)i, s_lcd_cfg_list[i].name,
+                   s_lcd_cfg_list[i].pwidth, s_lcd_cfg_list[i].pheight);
+        }
+        return 0;
+    }
+
+    if (strcmp(argv[1], "init") == 0)
+    {
+        bsp_InitTFT();
+        return 0;
+    }
+
+    if (strcmp(argv[1], "deinit") == 0)
+    {
+        if (bsp_DeInitTFT() != TFT_OK)
+        {
+            printf("deinit failed (already de-initialised?)\r\n");
+            return -1;
+        }
+        return 0;
+    }
+
+    if (strcmp(argv[1], "panel") == 0 && argc >= 3)
+    {
+        if (bsp_SelectTFT((tft_panel_id_t)atoi(argv[2])) != TFT_OK)
+        {
+            printf("invalid panel id, or LTDC currently running\r\n");
+            return -1;
+        }
+        return 0;
+    }
+
+    if (strcmp(argv[1], "bl") == 0 && argc >= 3)
+    {
+        TFT_SetBacklight((uint8_t)atoi(argv[2]));
+        return 0;
+    }
+
+    if (strcmp(argv[1], "on") == 0)
+    {
+        TFT_DispOn();
+        return 0;
+    }
+
+    if (strcmp(argv[1], "off") == 0)
+    {
+        TFT_DispOff();
+        return 0;
+    }
+
+    /* layer <id> <op> [args...] ------------------------------------------ */
+    if (strcmp(argv[1], "layer") == 0 && argc >= 4)
+    {
+        tft_layer_id_t lid = (tft_layer_id_t)atoi(argv[2]);
+        const char *op = argv[3];
+        tft_status_t rc = TFT_ERR;
+
+        if (strcmp(op, "show") == 0)
+        {
+            rc = TFT_LayerSetVisible(lid, 1U);
+        }
+        else if (strcmp(op, "hide") == 0)
+        {
+            rc = TFT_LayerSetVisible(lid, 0U);
+        }
+        else if (strcmp(op, "alpha") == 0 && argc >= 5)
+        {
+            rc = TFT_LayerSetAlpha(lid, (uint8_t)atoi(argv[4]));
+        }
+        else if (strcmp(op, "addr") == 0 && argc >= 5)
+        {
+            rc = TFT_LayerSetAddress(lid, (uint32_t)strtoul(argv[4], NULL, 0));
+        }
+        else if (strcmp(op, "pos") == 0 && argc >= 6)
+        {
+            rc = TFT_LayerSetWindowPos(lid,
+                                       (uint16_t)atoi(argv[4]),
+                                       (uint16_t)atoi(argv[5]));
+        }
+        else if (strcmp(op, "size") == 0 && argc >= 6)
+        {
+            rc = TFT_LayerSetWindowSize(lid,
+                                        (uint16_t)atoi(argv[4]),
+                                        (uint16_t)atoi(argv[5]));
+        }
+        else
+        {
+            printf("layer op: show|hide|alpha|addr|pos|size\r\n");
+            return -1;
+        }
+
+        if (rc != TFT_OK)
+        {
+            printf("layer op failed (id range / not initialised?)\r\n");
+            return -1;
+        }
+        return 0;
+    }
+
+    printf("unknown sub-command: %s\r\n", argv[1]);
+    return -1;
 }
 
-// 导出到命令列表里
-SHELL_EXPORT_CMD(SHELL_CMD_PERMISSION(0) | SHELL_CMD_TYPE(SHELL_TYPE_CMD_MAIN), tft, _cmd, tft[set test read write]);
-#endif // #ifdef DEBUG_MODE
+SHELL_EXPORT_CMD(SHELL_CMD_PERMISSION(0) | SHELL_CMD_TYPE(SHELL_TYPE_CMD_MAIN), tft, _tft_cmd, tft[info list init deinit panel bl layer on off]);
+#endif /* __SHELL_H__ && DEBUG_MODE */
 
-/***************************** 安富莱电子 www.armfly.com (END OF FILE) *********************************/
+/*************************************** (END OF FILE) ****************************************/
