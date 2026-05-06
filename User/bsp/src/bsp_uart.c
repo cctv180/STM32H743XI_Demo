@@ -1,251 +1,298 @@
-/*
-*********************************************************************************************************
-*
-*   模块名称 : 串口中断+FIFO驱动模块
-*   文件名称 : bsp_uart_fifo.c
-*   版    本 : V1.8
-*   说    明 : 采用串口中断+FIFO模式实现多个串口的同时访问
-*   修改记录 :
-*       版本号  日期       作者    说明
-*       V1.0    2013-02-01 armfly  正式发布
-*       V1.1    2013-06-09 armfly  FiFo结构增加TxCount成员变量，方便判断缓冲区满; 增加 清FiFo的函数
-*       V1.2    2014-09-29 armfly  增加RS485 MODBUS接口。接收到新字节后，直接执行回调函数。
-*       V1.3    2015-07-23 armfly  增加 UART_T 结构的读写指针几个成员变量必须增加 __IO 修饰,否则优化后
-*                   会导致串口发送函数死机。
-*       V1.4    2015-08-04 armfly  解决UART4配置bug  GPIO_PinAFConfig(GPIOC, GPIO_PinSource11, GPIO_AF_USART1);
-*       V1.5    2015-10-08 armfly  增加修改波特率的接口函数
-*       V1.6    2018-09-07 armfly  移植到STM32H7平台
-*       V1.7    2018-10-01 armfly  增加 Sending 标志，表示正在发送中
-*       V1.8    2018-11-26 armfly  增加UART8，第8个串口
-*
-*   Copyright (C), 2015-2030, 安富莱电子 www.armfly.com
-*
-*********************************************************************************************************
-*/
+/**
+ *********************************************************************************************************
+ * @file    bsp_uart.c
+ * @brief   多路 UART/USART + DMA + Ring Buffer 驱动
+ *
+ *  - HAL_UART_MspInit / HAL_UART_MspDeInit 保持 CubeMX 生成的结构 (per-instance
+ *    if/else), 直接覆盖 HAL 弱符号. CubeMX 重新生成时, 只需把对应分支拷贝到
+ *    本文件即可完成迁移. 原 CubeMX 文件 (Src/main.c, Src/stm32h7xx_hal_msp.c)
+ *    在 MDK-ARM 工程中 IncludeInBuild=0, 仅作迁移参考.
+ *
+ *  - 各端口的 MX_USARTx_UART_Init 仅是薄壳, 都调用同一个 uart_basic_init 完成
+ *    寄存器配置; 这样既保留了 CubeMX 的命名风格, 又消除了冗余拷贝.
+ *
+ *  - TX 路径: ringbuffer_put -> HAL_UART_Transmit_DMA -> TxCplt 中链式投递
+ *    剩余数据. read_index 在启动 DMA 之前更新, 避免 DMA 极快完成时回调读到
+ *    陈旧的 read_index 而重复发送.
+ *
+ *  - RX 路径: 启动 HAL_UARTEx_ReceiveToIdle_DMA (循环 DMA + idle 事件), 在
+ *    HAL_UARTEx_RxEventCallback 中由当前 DMA 写指针推进 ring buffer write_index.
+ *    应用层在 comGetChar / comGetBuf 中执行 D-Cache invalidate, 保证 CPU 读
+ *    到 DMA 已经写入 SRAM 的最新数据.
+ *
+ *  - 缓冲区按 32 字节对齐 (D-Cache line). RX 缓冲区大小必须为 2 的幂
+ *    (ringbuffer 借助 buffer_size-1 做掩码), 否则会越界. 配置宏建议直接写
+ *    成 2^N (默认 1024 / 8192 已满足).
+ *
+ * Copyright (C) Project Contributors. All rights reserved.
+ *********************************************************************************************************
+ */
 #include "bsp.h"
 #include "bsp_uart.h"
 #include "ring_buffer.h"
 
-/* Private variables ---------------------------------------------------------*/
+/* ========================================================================== */
+/*                                Private defines                              */
+/* ========================================================================== */
 
-/* External variables --------------------------------------------------------*/
+/* HAL UART_SetConfig 中的 BRR 边界, 复用以保证 comSetBaud 行为与 HAL 完全一致. */
+#define LPUART_BRR_MIN 0x00000300U
+#define LPUART_BRR_MAX 0x000FFFFFU
+#define UART_BRR_MIN 0x00000010U
+#define UART_BRR_MAX 0x0000FFFFU
 
-/* Private define ------------------------------------------------------------*/
-#define LPUART_BRR_MIN 0x00000300U /* LPUART BRR minimum authorized value */
-#define LPUART_BRR_MAX 0x000FFFFFU /* LPUART BRR maximum authorized value */
+/* RX DMA 缓冲对齐(32 字节, 适配 STM32H7 D-Cache line 长度). */
+#define BSP_UART_BUF_ALIGN __attribute__((aligned(32)))
 
-#define UART_BRR_MIN 0x10U       /* UART BRR minimum authorized value */
-#define UART_BRR_MAX 0x0000FFFFU /* UART BRR maximum authorized value */
+/* ========================================================================== */
+/*                                 Forward decl                                */
+/* ========================================================================== */
 
-static void UartVarInit(void);
-static UART_T *ComToUart(COM_PORT_E _ucPort);
-static UART_T *BaseToUart(USART_TypeDef *_pBase);
-static void UartSend(UART_T *_pUart, uint8_t *_ucaBuf, uint16_t _usLen);
+static UART_T *port_to_uart(COM_PORT_E port);
+static UART_T *instance_to_uart(const USART_TypeDef *base);
+static void uart_basic_init(UART_HandleTypeDef *huart, USART_TypeDef *instance, uint32_t baud);
+static void uart_kickoff_tx(UART_T *p);
 
-static void RS485_InitTXE(void);            /* 配置RS485发送使能GPIO */
-static void RS485_SendBefor(void);          /* 串口发送前 */
-static void RS485_SendOver(void);           /* 串口发送后 */
-static void RS485_ReciveNew(uint8_t _byte); /* 串口收到新数据 */
+static void RS485_InitTXE(void);
+static void RS485_SendBefor(void);
+static void RS485_SendOver(void);
+static void RS485_ReciveNew(uint8_t byte);
+
+/* ========================================================================== */
+/*                          Per-port state allocations                         */
+/* ========================================================================== */
 
 #if UART1_FIFO_EN == 1
-UART_T g_tUart1 = {0};
-__attribute__((aligned(32))) uint8_t s_tx_buf1[UART1_TX_BUF_SIZE]; /* 发送缓冲区 */
-__attribute__((aligned(32))) uint8_t s_rx_buf1[UART1_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart1;
 DMA_HandleTypeDef hdma_usart1_tx;
 DMA_HandleTypeDef hdma_usart1_rx;
+static UART_T s_uart1;
+BSP_UART_BUF_ALIGN static uint8_t s_tx_buf1[UART1_TX_BUF_SIZE];
+BSP_UART_BUF_ALIGN static uint8_t s_rx_buf1[UART1_RX_BUF_SIZE];
 #endif
 
 #if UART2_FIFO_EN == 1
-UART_T g_tUart2 = {0};
-__attribute__((aligned(32))) uint8_t s_tx_buf2[UART2_TX_BUF_SIZE]; /* 发送缓冲区 */
-__attribute__((aligned(32))) uint8_t s_rx_buf2[UART2_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart2;
 DMA_HandleTypeDef hdma_usart2_tx;
 DMA_HandleTypeDef hdma_usart2_rx;
+static UART_T s_uart2;
+BSP_UART_BUF_ALIGN static uint8_t s_tx_buf2[UART2_TX_BUF_SIZE];
+BSP_UART_BUF_ALIGN static uint8_t s_rx_buf2[UART2_RX_BUF_SIZE];
 #endif
 
 #if UART3_FIFO_EN == 1
-UART_T g_tUart3 = {0};
-__attribute__((aligned(32))) uint8_t s_tx_buf3[UART3_TX_BUF_SIZE]; /* 发送缓冲区 */
-__attribute__((aligned(32))) uint8_t s_rx_buf3[UART3_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart3;
 DMA_HandleTypeDef hdma_usart3_tx;
 DMA_HandleTypeDef hdma_usart3_rx;
+static UART_T s_uart3;
+BSP_UART_BUF_ALIGN static uint8_t s_tx_buf3[UART3_TX_BUF_SIZE];
+BSP_UART_BUF_ALIGN static uint8_t s_rx_buf3[UART3_RX_BUF_SIZE];
 #endif
 
 #if UART4_FIFO_EN == 1
-UART_T g_tUart4 = {0};
-__attribute__((aligned(32))) uint8_t s_tx_buf4[UART4_TX_BUF_SIZE]; /* 发送缓冲区 */
-__attribute__((aligned(32))) uint8_t s_rx_buf4[UART4_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart4;
 DMA_HandleTypeDef hdma_usart4_tx;
 DMA_HandleTypeDef hdma_usart4_rx;
+static UART_T s_uart4;
+BSP_UART_BUF_ALIGN static uint8_t s_tx_buf4[UART4_TX_BUF_SIZE];
+BSP_UART_BUF_ALIGN static uint8_t s_rx_buf4[UART4_RX_BUF_SIZE];
 #endif
 
 #if UART5_FIFO_EN == 1
-UART_T g_tUart5 = {0};
-__attribute__((aligned(32))) uint8_t s_tx_buf5[UART5_TX_BUF_SIZE]; /* 发送缓冲区 */
-__attribute__((aligned(32))) uint8_t s_rx_buf5[UART5_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart5;
 DMA_HandleTypeDef hdma_usart5_tx;
 DMA_HandleTypeDef hdma_usart5_rx;
+static UART_T s_uart5;
+BSP_UART_BUF_ALIGN static uint8_t s_tx_buf5[UART5_TX_BUF_SIZE];
+BSP_UART_BUF_ALIGN static uint8_t s_rx_buf5[UART5_RX_BUF_SIZE];
 #endif
 
 #if UART6_FIFO_EN == 1
-UART_T g_tUart6 = {0};
-__attribute__((aligned(32))) uint8_t s_tx_buf6[UART6_TX_BUF_SIZE]; /* 发送缓冲区 */
-__attribute__((aligned(32))) uint8_t s_rx_buf6[UART6_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart6;
 DMA_HandleTypeDef hdma_usart6_tx;
 DMA_HandleTypeDef hdma_usart6_rx;
+static UART_T s_uart6;
+BSP_UART_BUF_ALIGN static uint8_t s_tx_buf6[UART6_TX_BUF_SIZE];
+BSP_UART_BUF_ALIGN static uint8_t s_rx_buf6[UART6_RX_BUF_SIZE];
 #endif
 
 #if UART7_FIFO_EN == 1
-UART_T g_tUart7 = {0};
-__attribute__((aligned(32))) uint8_t s_tx_buf7[UART7_TX_BUF_SIZE]; /* 发送缓冲区 */
-__attribute__((aligned(32))) uint8_t s_rx_buf7[UART7_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart7;
 DMA_HandleTypeDef hdma_usart7_tx;
 DMA_HandleTypeDef hdma_usart7_rx;
+static UART_T s_uart7;
+BSP_UART_BUF_ALIGN static uint8_t s_tx_buf7[UART7_TX_BUF_SIZE];
+BSP_UART_BUF_ALIGN static uint8_t s_rx_buf7[UART7_RX_BUF_SIZE];
 #endif
 
 #if UART8_FIFO_EN == 1
-UART_T g_tUart8 = {0};
-__attribute__((aligned(32))) uint8_t s_tx_buf8[UART8_TX_BUF_SIZE]; /* 发送缓冲区 */
-__attribute__((aligned(32))) uint8_t s_rx_buf8[UART8_RX_BUF_SIZE]; /* 接收缓冲区 */
 UART_HandleTypeDef huart8;
 DMA_HandleTypeDef hdma_usart8_tx;
 DMA_HandleTypeDef hdma_usart8_rx;
+static UART_T s_uart8;
+BSP_UART_BUF_ALIGN static uint8_t s_tx_buf8[UART8_TX_BUF_SIZE];
+BSP_UART_BUF_ALIGN static uint8_t s_rx_buf8[UART8_RX_BUF_SIZE];
 #endif
 
+/* ========================================================================== */
+/*                                 Lookup helpers                              */
+/* ========================================================================== */
+
 /**
- * @brief USART1 Initialization Function
- * @param None
- * @retval None
+ * @brief COM_PORT_E -> UART_T*. 返回 NULL 表示该端口未启用或无效.
  */
+static UART_T *port_to_uart(COM_PORT_E port)
+{
+    switch (port)
+    {
 #if UART1_FIFO_EN == 1
-static void MX_USART1_UART_Init(void)
-{
-    huart1.Instance = USART1;
-    huart1.Init.BaudRate = 115200;
-    huart1.Init.WordLength = UART_WORDLENGTH_8B;
-    huart1.Init.StopBits = UART_STOPBITS_1;
-    huart1.Init.Parity = UART_PARITY_NONE;
-    huart1.Init.Mode = UART_MODE_TX_RX;
-    huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-    huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-    huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-    huart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-    huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-    if (HAL_UART_Init(&huart1) != HAL_OK)
-    {
-        ERROR_HANDLER();
-    }
-    if (HAL_UARTEx_SetTxFifoThreshold(&huart1, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
-    {
-        ERROR_HANDLER();
-    }
-    if (HAL_UARTEx_SetRxFifoThreshold(&huart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
-    {
-        ERROR_HANDLER();
-    }
-    if (HAL_UARTEx_DisableFifoMode(&huart1) != HAL_OK)
-    {
-        ERROR_HANDLER();
-    }
-}
+    case COM1:
+        return &s_uart1;
 #endif
-
-/**
- * @brief USART3 Initialization Function
- * @param None
- * @retval None
- */
+#if UART2_FIFO_EN == 1
+    case COM2:
+        return &s_uart2;
+#endif
 #if UART3_FIFO_EN == 1
-static void MX_USART3_UART_Init(void)
-{
-    huart3.Instance = USART3;
-    huart3.Init.BaudRate = 115200;
-    huart3.Init.WordLength = UART_WORDLENGTH_8B;
-    huart3.Init.StopBits = UART_STOPBITS_1;
-    huart3.Init.Parity = UART_PARITY_NONE;
-    huart3.Init.Mode = UART_MODE_TX_RX;
-    huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-    huart3.Init.OverSampling = UART_OVERSAMPLING_16;
-    huart3.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-    huart3.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-    huart3.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-    if (HAL_UART_Init(&huart3) != HAL_OK)
-    {
-        ERROR_HANDLER();
-    }
-    if (HAL_UARTEx_SetTxFifoThreshold(&huart3, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
-    {
-        ERROR_HANDLER();
-    }
-    if (HAL_UARTEx_SetRxFifoThreshold(&huart3, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
-    {
-        ERROR_HANDLER();
-    }
-    if (HAL_UARTEx_DisableFifoMode(&huart3) != HAL_OK)
-    {
-        ERROR_HANDLER();
-    }
-}
+    case COM3:
+        return &s_uart3;
 #endif
-
-/**
- * @brief USART6 Initialization Function
- * @param None
- * @retval None
- */
+#if UART4_FIFO_EN == 1
+    case COM4:
+        return &s_uart4;
+#endif
+#if UART5_FIFO_EN == 1
+    case COM5:
+        return &s_uart5;
+#endif
 #if UART6_FIFO_EN == 1
-static void MX_USART6_UART_Init(void)
+    case COM6:
+        return &s_uart6;
+#endif
+#if UART7_FIFO_EN == 1
+    case COM7:
+        return &s_uart7;
+#endif
+#if UART8_FIFO_EN == 1
+    case COM8:
+        return &s_uart8;
+#endif
+    default:
+        return NULL;
+    }
+}
+
+/**
+ * @brief 由外设基地址定位 UART_T (用于 HAL 回调).
+ */
+static UART_T *instance_to_uart(const USART_TypeDef *base)
 {
-    huart6.Instance = USART6;
-    huart6.Init.BaudRate = 115200;
-    huart6.Init.WordLength = UART_WORDLENGTH_8B;
-    huart6.Init.StopBits = UART_STOPBITS_1;
-    huart6.Init.Parity = UART_PARITY_NONE;
-    huart6.Init.Mode = UART_MODE_TX_RX;
-    huart6.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-    huart6.Init.OverSampling = UART_OVERSAMPLING_16;
-    huart6.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-    huart6.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-    huart6.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-    if (HAL_UART_Init(&huart6) != HAL_OK)
+#if UART1_FIFO_EN == 1
+    if (base == USART1)
+        return &s_uart1;
+#endif
+#if UART2_FIFO_EN == 1
+    if (base == USART2)
+        return &s_uart2;
+#endif
+#if UART3_FIFO_EN == 1
+    if (base == USART3)
+        return &s_uart3;
+#endif
+#if UART4_FIFO_EN == 1
+    if (base == UART4)
+        return &s_uart4;
+#endif
+#if UART5_FIFO_EN == 1
+    if (base == UART5)
+        return &s_uart5;
+#endif
+#if UART6_FIFO_EN == 1
+    if (base == USART6)
+        return &s_uart6;
+#endif
+#if UART7_FIFO_EN == 1
+    if (base == UART7)
+        return &s_uart7;
+#endif
+#if UART8_FIFO_EN == 1
+    if (base == UART8)
+        return &s_uart8;
+#endif
+    (void)base;
+    return NULL;
+}
+
+/* ========================================================================== */
+/*                       Common HAL UART config (基础参数)                      */
+/* ========================================================================== */
+
+/**
+ * @brief 用统一的默认参数初始化 UART_HandleTypeDef.
+ *
+ * CubeMX 默认生成的 MX_USARTx_UART_Init 在每个端口都重复同样的字段, 仅
+ * Instance / BaudRate 不同. 这里把公共部分集中, 命名仍保留 MX_USARTx_UART_Init,
+ * 让 CubeMX 重新生成代码时仍能按文件名定位差异.
+ */
+static void uart_basic_init(UART_HandleTypeDef *huart, USART_TypeDef *instance, uint32_t baud)
+{
+    huart->Instance = instance;
+    huart->Init.BaudRate = baud;
+    huart->Init.WordLength = UART_WORDLENGTH_8B;
+    huart->Init.StopBits = UART_STOPBITS_1;
+    huart->Init.Parity = UART_PARITY_NONE;
+    huart->Init.Mode = UART_MODE_TX_RX;
+    huart->Init.HwFlowCtl = UART_HWCONTROL_NONE;
+    huart->Init.OverSampling = UART_OVERSAMPLING_16;
+    huart->Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+    huart->Init.ClockPrescaler = UART_PRESCALER_DIV1;
+    huart->AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+
+    if (HAL_UART_Init(huart) != HAL_OK)
     {
         ERROR_HANDLER();
     }
-    if (HAL_UARTEx_SetTxFifoThreshold(&huart6, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+    if (HAL_UARTEx_SetTxFifoThreshold(huart, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
     {
         ERROR_HANDLER();
     }
-    if (HAL_UARTEx_SetRxFifoThreshold(&huart6, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+    if (HAL_UARTEx_SetRxFifoThreshold(huart, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
     {
         ERROR_HANDLER();
     }
-    if (HAL_UARTEx_DisableFifoMode(&huart6) != HAL_OK)
+    if (HAL_UARTEx_DisableFifoMode(huart) != HAL_OK)
     {
         ERROR_HANDLER();
     }
 }
+
+#if UART1_FIFO_EN == 1
+static void MX_USART1_UART_Init(void) { uart_basic_init(&huart1, USART1, UART1_BAUD); }
+#endif
+#if UART3_FIFO_EN == 1
+static void MX_USART3_UART_Init(void) { uart_basic_init(&huart3, USART3, UART3_BAUD); }
+#endif
+#if UART6_FIFO_EN == 1
+static void MX_USART6_UART_Init(void) { uart_basic_init(&huart6, USART6, UART6_BAUD); }
 #endif
 
+/* ========================================================================== */
+/*                  HAL_UART_MspInit (CubeMX 风格, 直接覆盖弱符号)                */
+/* ========================================================================== */
+
 /**
- * @brief UART MSP Initialization
- * This function configures the hardware resources used in this example
- * @param huart: UART handle pointer
- * @retval None
+ * @brief Initializes the UART MSP.
+ *
+ * 与 STM32CubeMX 生成的 stm32h7xx_hal_msp.c 内容保持一致, 便于直接对照迁移.
  */
 void HAL_UART_MspInit(UART_HandleTypeDef *huart)
 {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
     RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
+
+#if UART1_FIFO_EN == 1
     if (huart->Instance == USART1)
     {
-#if UART1_FIFO_EN == 1
         PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_USART1;
         PeriphClkInitStruct.Usart16ClockSelection = RCC_USART16CLKSOURCE_D2PCLK2;
         if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
@@ -253,23 +300,18 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
             ERROR_HANDLER();
         }
 
-        /* Peripheral clock enable */
         __HAL_RCC_USART1_CLK_ENABLE();
-
         __HAL_RCC_GPIOA_CLK_ENABLE();
-        /**USART1 GPIO Configuration
-        PA10     ------> USART1_RX
-        PA9     ------> USART1_TX
-        */
-        GPIO_InitStruct.Pin = GPIO_PIN_10 | GPIO_PIN_9;
+
+        /* PA9 -> USART1_TX, PA10 -> USART1_RX */
+        GPIO_InitStruct.Pin = GPIO_PIN_9 | GPIO_PIN_10;
         GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
         GPIO_InitStruct.Pull = GPIO_NOPULL;
         GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
         GPIO_InitStruct.Alternate = GPIO_AF7_USART1;
         HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-        /* USART1 DMA Init */
-        /* USART1_RX Init */
+        /* USART1_RX -> DMA1 Stream0 */
         hdma_usart1_rx.Instance = DMA1_Stream0;
         hdma_usart1_rx.Init.Request = DMA_REQUEST_USART1_RX;
         hdma_usart1_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
@@ -284,10 +326,9 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
         {
             ERROR_HANDLER();
         }
-
         __HAL_LINKDMA(huart, hdmarx, hdma_usart1_rx);
 
-        /* USART1_TX Init */
+        /* USART1_TX -> DMA1 Stream1 */
         hdma_usart1_tx.Instance = DMA1_Stream1;
         hdma_usart1_tx.Init.Request = DMA_REQUEST_USART1_TX;
         hdma_usart1_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
@@ -302,18 +343,17 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
         {
             ERROR_HANDLER();
         }
-
         __HAL_LINKDMA(huart, hdmatx, hdma_usart1_tx);
 
-        /* USART1 interrupt Init */
         HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
         HAL_NVIC_EnableIRQ(USART1_IRQn);
-#endif
+        return;
     }
+#endif
+
 #if UART3_FIFO_EN == 1
-    else if (huart->Instance == USART3)
+    if (huart->Instance == USART3)
     {
-        /** Initializes the peripherals clock */
         PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_USART3;
         PeriphClkInitStruct.Usart234578ClockSelection = RCC_USART234578CLKSOURCE_D2PCLK1;
         if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
@@ -321,14 +361,10 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
             ERROR_HANDLER();
         }
 
-        /* Peripheral clock enable */
         __HAL_RCC_USART3_CLK_ENABLE();
-
         __HAL_RCC_GPIOB_CLK_ENABLE();
-        /**USART3 GPIO Configuration
-        PB10     ------> USART3_TX
-        PB11     ------> USART3_RX
-        */
+
+        /* PB10 -> USART3_TX, PB11 -> USART3_RX */
         GPIO_InitStruct.Pin = GPIO_PIN_10 | GPIO_PIN_11;
         GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
         GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -336,8 +372,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
         GPIO_InitStruct.Alternate = GPIO_AF7_USART3;
         HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-        /* USART3 DMA Init */
-        /* USART3_RX Init */
+        /* USART3_RX -> DMA1 Stream2 */
         hdma_usart3_rx.Instance = DMA1_Stream2;
         hdma_usart3_rx.Init.Request = DMA_REQUEST_USART3_RX;
         hdma_usart3_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
@@ -352,10 +387,9 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
         {
             ERROR_HANDLER();
         }
-
         __HAL_LINKDMA(huart, hdmarx, hdma_usart3_rx);
 
-        /* USART3_TX Init */
+        /* USART3_TX -> DMA1 Stream3 */
         hdma_usart3_tx.Instance = DMA1_Stream3;
         hdma_usart3_tx.Init.Request = DMA_REQUEST_USART3_TX;
         hdma_usart3_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
@@ -370,19 +404,17 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
         {
             ERROR_HANDLER();
         }
-
         __HAL_LINKDMA(huart, hdmatx, hdma_usart3_tx);
 
-        /* USART3 interrupt Init */
         HAL_NVIC_SetPriority(USART3_IRQn, 0, 0);
         HAL_NVIC_EnableIRQ(USART3_IRQn);
+        return;
     }
 #endif
+
 #if UART6_FIFO_EN == 1
-    else if (huart->Instance == USART6)
+    if (huart->Instance == USART6)
     {
-        /** Initializes the peripherals clock
-         */
         PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_USART6;
         PeriphClkInitStruct.Usart16ClockSelection = RCC_USART16CLKSOURCE_D2PCLK2;
         if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
@@ -390,15 +422,11 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
             ERROR_HANDLER();
         }
 
-        /* Peripheral clock enable */
         __HAL_RCC_USART6_CLK_ENABLE();
-
         __HAL_RCC_GPIOG_CLK_ENABLE();
         __HAL_RCC_GPIOC_CLK_ENABLE();
-        /**USART6 GPIO Configuration
-        PG14     ------> USART6_TX
-        PC7     ------> USART6_RX
-        */
+
+        /* PG14 -> USART6_TX */
         GPIO_InitStruct.Pin = GPIO_PIN_14;
         GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
         GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -406,15 +434,11 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
         GPIO_InitStruct.Alternate = GPIO_AF7_USART6;
         HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 
+        /* PC7 -> USART6_RX */
         GPIO_InitStruct.Pin = GPIO_PIN_7;
-        GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-        GPIO_InitStruct.Pull = GPIO_NOPULL;
-        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-        GPIO_InitStruct.Alternate = GPIO_AF7_USART6;
         HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-        /* USART6 DMA Init */
-        /* USART6_RX Init */
+        /* USART6_RX -> DMA1 Stream4 */
         hdma_usart6_rx.Instance = DMA1_Stream4;
         hdma_usart6_rx.Init.Request = DMA_REQUEST_USART6_RX;
         hdma_usart6_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
@@ -429,10 +453,9 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
         {
             ERROR_HANDLER();
         }
-
         __HAL_LINKDMA(huart, hdmarx, hdma_usart6_rx);
 
-        /* USART6_TX Init */
+        /* USART6_TX -> DMA1 Stream5 */
         hdma_usart6_tx.Instance = DMA1_Stream5;
         hdma_usart6_tx.Init.Request = DMA_REQUEST_USART6_TX;
         hdma_usart6_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
@@ -447,549 +470,364 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
         {
             ERROR_HANDLER();
         }
-
         __HAL_LINKDMA(huart, hdmatx, hdma_usart6_tx);
 
-        /* USART6 interrupt Init */
         HAL_NVIC_SetPriority(USART6_IRQn, 0, 0);
         HAL_NVIC_EnableIRQ(USART6_IRQn);
+        return;
     }
 #endif
 }
 
 /**
- * @brief UART MSP De-Initialization
- * This function freeze the hardware resources used in this example
- * @param huart: UART handle pointer
- * @retval None
+ * @brief De-Initializes the UART MSP.
  */
 void HAL_UART_MspDeInit(UART_HandleTypeDef *huart)
 {
+#if UART1_FIFO_EN == 1
     if (huart->Instance == USART1)
     {
-        /* USER CODE BEGIN USART1_MspDeInit 0 */
-
-        /* USER CODE END USART1_MspDeInit 0 */
-        /* Peripheral clock disable */
         __HAL_RCC_USART1_CLK_DISABLE();
-
-        /**USART1 GPIO Configuration
-        PA10     ------> USART1_RX
-        PA9     ------> USART1_TX
-        */
-        HAL_GPIO_DeInit(GPIOA, GPIO_PIN_10 | GPIO_PIN_9);
-
-        /* USART1 DMA DeInit */
+        HAL_GPIO_DeInit(GPIOA, GPIO_PIN_9 | GPIO_PIN_10);
         HAL_DMA_DeInit(huart->hdmarx);
         HAL_DMA_DeInit(huart->hdmatx);
-
-        /* USART1 interrupt DeInit */
         HAL_NVIC_DisableIRQ(USART1_IRQn);
-        /* USER CODE BEGIN USART1_MspDeInit 1 */
-
-        /* USER CODE END USART1_MspDeInit 1 */
+        return;
     }
-    else if (huart->Instance == USART3)
+#endif
+#if UART3_FIFO_EN == 1
+    if (huart->Instance == USART3)
     {
-        /* USER CODE BEGIN USART3_MspDeInit 0 */
-
-        /* USER CODE END USART3_MspDeInit 0 */
-        /* Peripheral clock disable */
         __HAL_RCC_USART3_CLK_DISABLE();
-
-        /**USART3 GPIO Configuration
-        PB10     ------> USART3_TX
-        PB11     ------> USART3_RX
-        */
         HAL_GPIO_DeInit(GPIOB, GPIO_PIN_10 | GPIO_PIN_11);
-
-        /* USART3 DMA DeInit */
         HAL_DMA_DeInit(huart->hdmarx);
         HAL_DMA_DeInit(huart->hdmatx);
-
-        /* USART3 interrupt DeInit */
         HAL_NVIC_DisableIRQ(USART3_IRQn);
-        /* USER CODE BEGIN USART3_MspDeInit 1 */
-
-        /* USER CODE END USART3_MspDeInit 1 */
+        return;
     }
-    else if (huart->Instance == USART6)
+#endif
+#if UART6_FIFO_EN == 1
+    if (huart->Instance == USART6)
     {
-        /* USER CODE BEGIN USART6_MspDeInit 0 */
-
-        /* USER CODE END USART6_MspDeInit 0 */
-        /* Peripheral clock disable */
         __HAL_RCC_USART6_CLK_DISABLE();
-
-        /**USART6 GPIO Configuration
-        PG14     ------> USART6_TX
-        PC7     ------> USART6_RX
-        */
         HAL_GPIO_DeInit(GPIOG, GPIO_PIN_14);
-
         HAL_GPIO_DeInit(GPIOC, GPIO_PIN_7);
-
-        /* USART6 DMA DeInit */
         HAL_DMA_DeInit(huart->hdmarx);
         HAL_DMA_DeInit(huart->hdmatx);
-
-        /* USART6 interrupt DeInit */
         HAL_NVIC_DisableIRQ(USART6_IRQn);
-        /* USER CODE BEGIN USART6_MspDeInit 1 */
-
-        /* USER CODE END USART6_MspDeInit 1 */
+        return;
     }
+#endif
 }
 
+/* ========================================================================== */
+/*                                HAL callbacks                                */
+/* ========================================================================== */
+
 /**
- * [HAL_UARTEx_RxEventCallback description]
+ * @brief 由 HAL 在 RX idle / 半满 / 满 时调用. Size 是 DMA 当前在缓冲区中的写入位置 (0-based).
  *
- * @return  void    [return description]
+ *  实际 DMA 是循环模式, ringbuffer 的 buffer_ptr 与 DMA target 是同一段内存.
+ *  本函数只负责让 ring buffer 的 write_index 跟上 DMA 真实写指针, 并维护
+ *  mirror bit / 必要时回退 read_index 以避免覆盖未取走的数据.
  */
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
-    UART_T *pUart = BaseToUart(huart->Instance);
-
-    if (pUart != 0)
+    UART_T *p = instance_to_uart(huart->Instance);
+    if (p == NULL)
     {
-        uint16_t space = ringbuffer_space_len(&pUart->rx_kfifo);                                         // 剩余空间
-        uint16_t index_new = Size & (pUart->rx_kfifo.buffer_size - 1);                                   // 新写入指针
-        uint16_t length = (index_new - pUart->rx_kfifo.write_index) & (pUart->rx_kfifo.buffer_size - 1); // 新写入长度
+        return;
+    }
 
-        if (pUart->rx_kfifo.write_index > index_new) // 满一圈
-        {
-            pUart->rx_kfifo.write_mirror = ~pUart->rx_kfifo.write_mirror;
-            if (length > space)
-            {
-                pUart->rx_kfifo.read_mirror = ~pUart->rx_kfifo.read_mirror;
-            }
-        }
+    const uint16_t mask = p->rx_kfifo.buffer_size - 1U;
+    const uint16_t index_new = (uint16_t)(Size & mask);
+    const uint16_t length = (uint16_t)((index_new - p->rx_kfifo.write_index) & mask);
+    const uint16_t space = ringbuffer_space_len(&p->rx_kfifo);
+
+    /* 是否跨过了一圈 (write_index 走过了 buffer 末尾) */
+    if (p->rx_kfifo.write_index > index_new)
+    {
+        p->rx_kfifo.write_mirror = ~p->rx_kfifo.write_mirror;
         if (length > space)
         {
-            pUart->rx_kfifo.read_index = index_new;
+            p->rx_kfifo.read_mirror = ~p->rx_kfifo.read_mirror;
         }
-        pUart->rx_kfifo.write_index = index_new;
+    }
+    /* 缓冲区满, 主动丢弃最早的数据 (read_index 跟随 write_index) */
+    if (length > space)
+    {
+        p->rx_kfifo.read_index = index_new;
+    }
+    p->rx_kfifo.write_index = index_new;
 
-        if (pUart->ReciveNew)
-        {
-            pUart->ReciveNew(length); /* 比如，交给MODBUS解码程序处理字节流 */
-        }
+    if (p->ReciveNew)
+    {
+        p->ReciveNew((uint8_t)length);
     }
 }
 
 /**
- * [HAL_UART_TxCpltCallback description]
- *
- * @return  void    [return description]
+ * @brief TX DMA 单次完成回调. 在此处自动投递 ring buffer 中剩余的数据.
  */
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
-    UART_T *pUart = BaseToUart(huart->Instance);
-    uint16_t len;
-    if (pUart != 0)
-    {
-        len = ringbuffer_data_len(&pUart->tx_kfifo);
-        if (len == 0)
-        {
-            /* 回调函数, 一般用来处理RS485通信，将RS485芯片设置为接收模式，避免抢占总线 */
-            if (pUart->SendOver)
-            {
-                pUart->SendOver();
-            }
-            pUart->Sending = FALSE;
-            return;
-        }
-        else
-        {
-            if (pUart->tx_kfifo.buffer_size - pUart->tx_kfifo.read_index > len)
-            {
-                /* 不用回绕 */
-                HAL_UART_Transmit_DMA(pUart->huart, &(pUart->tx_kfifo.buffer_ptr[pUart->tx_kfifo.read_index]), len);
-                pUart->tx_kfifo.read_index += len;
-            }
-            else
-            {
-                HAL_UART_Transmit_DMA(pUart->huart, &(pUart->tx_kfifo.buffer_ptr[pUart->tx_kfifo.read_index]), pUart->tx_kfifo.buffer_size - pUart->tx_kfifo.read_index);
-                pUart->tx_kfifo.read_mirror = ~pUart->tx_kfifo.read_mirror;
-                pUart->tx_kfifo.read_index = 0;
-            }
-        }
-    }
-}
-
-/**
- * @brief This function handles USART1 global interrupt.
- */
-#if UART1_FIFO_EN == 1
-void USART1_IRQHandler(void)
-{
-    HAL_UART_IRQHandler(&huart1);
-}
-#endif
-
-/**
- * @brief This function handles USART3 global interrupt.
- */
-#if UART3_FIFO_EN == 1
-void USART3_IRQHandler(void)
-{
-    HAL_UART_IRQHandler(&huart3);
-}
-#endif
-
-/**
- * @brief This function handles USART6 global interrupt.
- */
-#if UART6_FIFO_EN == 1
-void USART6_IRQHandler(void)
-{
-    HAL_UART_IRQHandler(&huart6);
-}
-#endif
-
-/*
-*********************************************************************************************************
-*   函 数 名: BaseToUart
-*   功能说明: 将UART基地址转换为UART指针
-*   形    参: _pBase: UART基地址(USART1 - USART8)
-*   返 回 值: uart指针
-*********************************************************************************************************
-*/
-static UART_T *BaseToUart(USART_TypeDef *_pBase)
-{
-    if (_pBase == USART1)
-    {
-#if UART1_FIFO_EN == 1
-        return &g_tUart1;
-#else
-        return 0;
-#endif
-    }
-#if UART2_FIFO_EN == 1
-    else if (_pBase == USART2)
-    {
-        return &g_tUart2;
-    }
-#endif
-#if UART3_FIFO_EN == 1
-    else if (_pBase == USART3)
-    {
-        return &g_tUart3;
-    }
-#endif
-#if UART4_FIFO_EN == 1
-    else if (_pBase == UART4)
-    {
-        return &g_tUart4;
-    }
-#endif
-#if UART5_FIFO_EN == 1
-    else if (_pBase == UART5)
-    {
-        return &g_tUart5;
-    }
-#endif
-#if UART6_FIFO_EN == 1
-    else if (_pBase == USART6)
-    {
-        return &g_tUart6;
-    }
-#endif
-#if UART7_FIFO_EN == 1
-    else if (_pBase == UART7)
-    {
-        return &g_tUart7;
-    }
-#endif
-#if UART8_FIFO_EN == 1
-    else if (_pBase == UART8)
-    {
-        return &g_tUart8;
-    }
-#endif
-    /* 不做任何处理 */
-    return 0;
-}
-
-/*
-*********************************************************************************************************
-*   函 数 名: ComToUart
-*   功能说明: 将COM端口号转换为UART指针
-*   形    参: _ucPort: 端口号(COM1 - COM8)
-*   返 回 值: uart指针
-*********************************************************************************************************
-*/
-static UART_T *ComToUart(COM_PORT_E _ucPort)
-{
-    if (_ucPort == COM1)
-    {
-#if UART1_FIFO_EN == 1
-        return &g_tUart1;
-#else
-        return 0;
-#endif
-    }
-#if UART2_FIFO_EN == 1
-    else if (_ucPort == COM2)
-    {
-        return &g_tUart2;
-    }
-#endif
-#if UART3_FIFO_EN == 1
-    else if (_ucPort == COM3)
-    {
-        return &g_tUart3;
-    }
-#endif
-#if UART4_FIFO_EN == 1
-    else if (_ucPort == COM4)
-    {
-        return &g_tUart4;
-    }
-#endif
-#if UART5_FIFO_EN == 1
-    else if (_ucPort == COM5)
-    {
-        return &g_tUart5;
-    }
-#endif
-#if UART6_FIFO_EN == 1
-    else if (_ucPort == COM6)
-    {
-        return &g_tUart6;
-    }
-#endif
-#if UART7_FIFO_EN == 1
-    else if (_ucPort == COM7)
-    {
-        return &g_tUart7;
-    }
-#endif
-#if UART8_FIFO_EN == 1
-    else if (_ucPort == COM8)
-    {
-        return &g_tUart8;
-    }
-#endif
-    /* 不做任何处理 */
-    return 0;
-}
-
-/*
-*********************************************************************************************************
-*   函 数 名: UartSend
-*   功能说明: 填写数据到UART发送缓冲区,并启动发送中断。中断处理函数发送完毕后，自动关闭发送中断
-*   形    参: 无
-*   返 回 值: 无
-*********************************************************************************************************
-*/
-static void UartSend(UART_T *_pUart, uint8_t *_ucaBuf, uint16_t _usLen)
-{
-    uint16_t len;
-
-    len = ringbuffer_put(&_pUart->tx_kfifo, _ucaBuf, _usLen);
-
-    /* 按地址清理数据高速缓存行 将传输缓冲区中的更新数据写入RAM */
-    SCB_CleanDCache_by_Addr((uint32_t *)_pUart->tx_kfifo.buffer_ptr, _pUart->tx_kfifo.buffer_size);
-
-    /* DMA不忙 */
-    // if (HAL_DMA_STATE_BUSY != HAL_DMA_GetState(_pUart->huart->hdmatx))
-    if (_pUart->Sending != TRUE)
-    {
-        _pUart->Sending = TRUE;
-        if (_pUart->tx_kfifo.buffer_size - _pUart->tx_kfifo.read_index > len)
-        {
-            /* 不用回绕 */
-            HAL_UART_Transmit_DMA(_pUart->huart, &(_pUart->tx_kfifo.buffer_ptr[_pUart->tx_kfifo.read_index]), len);
-            _pUart->tx_kfifo.read_index += len;
-        }
-        else
-        {
-            HAL_UART_Transmit_DMA(_pUart->huart, &(_pUart->tx_kfifo.buffer_ptr[_pUart->tx_kfifo.read_index]), _pUart->tx_kfifo.buffer_size - _pUart->tx_kfifo.read_index);
-            _pUart->tx_kfifo.read_mirror = ~_pUart->tx_kfifo.read_mirror;
-            _pUart->tx_kfifo.read_index = 0;
-        }
-    }
-
-#if 0  /// TODO 超长截断末尾。
-    while (len < _usLen)
-    {
-        len += ringbuffer_put(&_pUart->tx_kfifo, _ucaBuf + len, _usLen - len);
-    }
-#endif // 0
-}
-
-/*
-*********************************************************************************************************
-*   函 数 名: comSendBuf
-*   功能说明: 向串口发送一组数据。数据放到发送缓冲区后立即返回，由中断服务程序在后台完成发送
-*   形    参: _ucPort: 端口号(COM1 - COM8)
-*             _ucaBuf: 待发送的数据缓冲区
-*             _usLen : 数据长度
-*   返 回 值: 无
-*********************************************************************************************************
-*/
-void comSendBuf(COM_PORT_E _ucPort, uint8_t *_ucaBuf, uint16_t _usLen)
-{
-    UART_T *pUart;
-
-    pUart = ComToUart(_ucPort);
-    if (pUart == 0)
+    UART_T *p = instance_to_uart(huart->Instance);
+    if (p == NULL)
     {
         return;
     }
 
-    if (pUart->SendBefor != 0)
+    if (ringbuffer_data_len(&p->tx_kfifo) == 0U)
     {
-        pUart->SendBefor(); /* 如果是RS485通信，可以在这个函数中将RS485设置为发送模式 */
+        if (p->SendOver)
+        {
+            p->SendOver(); /* 例: RS485 切回接收 */
+        }
+        p->Sending = FALSE;
+        return;
     }
 
-    UartSend(pUart, _ucaBuf, _usLen);
+    uart_kickoff_tx(p);
 }
 
-/*
-*********************************************************************************************************
-*   函 数 名: comSendChar
-*   功能说明: 向串口发送1个字节。数据放到发送缓冲区后立即返回，由中断服务程序在后台完成发送
-*   形    参: _ucPort: 端口号(COM1 - COM8)
-*             _ucByte: 待发送的数据
-*   返 回 值: 无
-*********************************************************************************************************
-*/
-void comSendChar(COM_PORT_E _ucPort, uint8_t _ucByte)
+/**
+ * @brief UART 错误回调.
+ *
+ *  常见错误源:
+ *    - ORE (Overrun): RX FIFO 来不及取走, 通常 idle-line DMA 模式下不会出现,
+ *      仅当中断响应被长时间挡住才偶发.
+ *    - PE / FE / NE  : 波特率失配 / 噪声 / 帧错误.
+ *    - DMA error     : DMA 总线故障 (极少).
+ *    - RTO           : Receiver Timeout (启用了 USART_CR2_RTOEN 才会触发).
+ *
+ *  HAL 在调用本回调之前已经清掉对应错误标志、停掉 RX DMA 并把 gState 置回
+ *  READY (参见 stm32h7xx_hal_uart.c 的 UART_DMAError / UART_DMAReceiveCplt
+ *  错误分支). 本函数只需把端口状态 (ring buffer / Sending) 复位, 重新装载
+ *  循环 DMA 让通道自动恢复.
+ */
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
-    comSendBuf(_ucPort, &_ucByte, 1);
-}
-
-/*
-*********************************************************************************************************
-*   函 数 名: comGetChar
-*   功能说明: 从接收缓冲区读取1字节，非阻塞。无论有无数据均立即返回。
-*   形    参: _ucPort: 端口号(COM1 - COM8)
-*             _pByte: 接收到的数据存放在这个地址
-*   返 回 值: 0 表示无数据, 1 表示读取到有效字节
-*********************************************************************************************************
-*/
-uint8_t comGetChar(COM_PORT_E _ucPort, uint8_t *_pByte)
-{
-    UART_T *pUart;
-
-    pUart = ComToUart(_ucPort);
-    if (pUart == 0)
-    {
-        return 0;
-    }
-    /* CPU访问前，将Cache对应的区域无效化 */
-    SCB_InvalidateDCache_by_Addr((uint32_t *)USER_ALIGN_DOWN((uint32_t)pUart->rx_kfifo.buffer_ptr + pUart->rx_kfifo.read_index, 32), (int32_t)32);
-    return ringbuffer_getchar(&pUart->rx_kfifo, _pByte);
-}
-
-/*
-*********************************************************************************************************
-*   函 数 名: comGetBuf
-*   功能说明: 从接收缓冲区读取指定长度，非阻塞。无论有无数据均立即返回。
-*   形    参: _ucPort: 端口号(COM1 - COM8)
-*             _pByte: 接收到的数据存放在这个地址
-*   返 回 值: 0 表示无数据, x 表示读取到有效字节
-*********************************************************************************************************
-*/
-uint16_t comGetBuf(COM_PORT_E _ucPort, uint8_t *_pByte, uint16_t _usLen)
-{
-    UART_T *pUart;
-
-    pUart = ComToUart(_ucPort);
-    if (pUart == 0)
-    {
-        return 0;
-    }
-    /* CPU访问前，将Cache对应的区域无效化 */
-    SCB_InvalidateDCache_by_Addr((uint32_t *)pUart->rx_kfifo.buffer_ptr, pUart->rx_kfifo.buffer_size);
-    return ringbuffer_get(&pUart->rx_kfifo, _pByte, _usLen);
-}
-
-/*
-*********************************************************************************************************
-*   函 数 名: comClearTxFifo
-*   功能说明: 清零串口发送缓冲区
-*   形    参: _ucPort: 端口号(COM1 - COM8)
-*   返 回 值: 无
-*********************************************************************************************************
-*/
-void comClearTxFifo(COM_PORT_E _ucPort)
-{
-    UART_T *pUart;
-
-    pUart = ComToUart(_ucPort);
-    if (pUart == 0)
+    UART_T *p = instance_to_uart(huart->Instance);
+    if (p == NULL)
     {
         return;
     }
 
-    ringbuffer_reset(&pUart->tx_kfifo);
+    BSP_Printf("UART error, ErrorCode=0x%08lX", (unsigned long)HAL_UART_GetError(huart));
+
+    /* TX 侧: 出错时 TxCplt 不会再来, 这里强制解锁 Sending, 否则下次
+     * comSendBuf 会把数据放进 ring buffer 但永远等不到 DMA 启动. */
+    p->Sending = FALSE;
+
+    /* RX 侧: HAL 已停 DMA, 清空 ring buffer 后重新启动 idle-line DMA.
+     * 失败也只是日志一下, 下一次 ErrorCallback 会再次尝试. */
+    ringbuffer_reset(&p->rx_kfifo);
+    if (HAL_UARTEx_ReceiveToIdle_DMA(huart,
+                                     p->rx_kfifo.buffer_ptr,
+                                     p->rx_kfifo.buffer_size) != HAL_OK)
+    {
+        BSP_Printf("UART rx-DMA restart failed");
+    }
 }
 
-/*
-*********************************************************************************************************
-*   函 数 名: comClearRxFifo
-*   功能说明: 清零串口接收缓冲区
-*   形    参: _ucPort: 端口号(COM1 - COM8)
-*   返 回 值: 无
-*********************************************************************************************************
-*/
-void comClearRxFifo(COM_PORT_E _ucPort)
-{
-    UART_T *pUart;
+/* ========================================================================== */
+/*                                IRQ handlers                                 */
+/* ========================================================================== */
 
-    pUart = ComToUart(_ucPort);
-    if (pUart == 0)
+#if UART1_FIFO_EN == 1
+void USART1_IRQHandler(void) { HAL_UART_IRQHandler(&huart1); }
+#endif
+#if UART3_FIFO_EN == 1
+void USART3_IRQHandler(void) { HAL_UART_IRQHandler(&huart3); }
+#endif
+#if UART6_FIFO_EN == 1
+void USART6_IRQHandler(void) { HAL_UART_IRQHandler(&huart6); }
+#endif
+
+/* ========================================================================== */
+/*                              TX kick-off helper                             */
+/* ========================================================================== */
+
+/**
+ * @brief 从 tx ring buffer 中取出连续一段, 启动一次 TX DMA.
+ *
+ *  顺序:
+ *    1. 计算本次能连续传输的长度 (考虑 ring buffer 的回绕).
+ *    2. 先更新 read_index / mirror 到"传输后"状态.
+ *    3. 启动 DMA 读取那段缓冲区.
+ *
+ *  原版做法是先启动 DMA 再更新 read_index. 当 baud 极高 / len 极小时,
+ *  TxCplt 回调可能先于 read_index 自增执行, 导致重复发送. 调换顺序即可
+ *  完全规避该竞态.
+ */
+static void uart_kickoff_tx(UART_T *p)
+{
+    const uint16_t total = ringbuffer_data_len(&p->tx_kfifo);
+    if (total == 0U)
     {
         return;
     }
-    pUart->rx_kfifo.read_index = pUart->rx_kfifo.write_index;
-    pUart->rx_kfifo.read_mirror = 0;
-    pUart->rx_kfifo.write_mirror = 0;
+
+    const uint16_t start = p->tx_kfifo.read_index;
+    const uint16_t to_end = (uint16_t)(p->tx_kfifo.buffer_size - start);
+    uint16_t take;
+
+    if (to_end > total)
+    {
+        take = total;
+        p->tx_kfifo.read_index = (uint16_t)(start + take);
+    }
+    else
+    {
+        take = to_end;
+        p->tx_kfifo.read_mirror = ~p->tx_kfifo.read_mirror;
+        p->tx_kfifo.read_index = 0U;
+    }
+
+    HAL_UART_Transmit_DMA(p->huart, &p->tx_kfifo.buffer_ptr[start], take);
 }
 
-/*
-*********************************************************************************************************
-*   函 数 名: comSetBaud
-*   功能说明: 设置串口的波特率. 本函数固定设置为无校验，收发都使能模式
-*   形    参: _ucPort: 端口号(COM1 - COM8)
-*             _BaudRate: 波特率，8倍过采样  波特率.0-12.5Mbps
-*                               16倍过采样 波特率.0-6.25Mbps
-*   返 回 值: ret
-*********************************************************************************************************
-*/
-int comSetBaud(COM_PORT_E _ucPort, uint32_t _BaudRate)
+/**
+ * @brief 把 buf 中的数据写入 tx ring buffer, 并按需触发 TX DMA.
+ * @retval 实际入队的字节数.
+ */
+static uint16_t uart_send(UART_T *p, const uint8_t *buf, uint16_t len)
 {
-    UART_T *pUart;
+    /* 注意 ringbuffer_put 接收 const uint8_t*. */
+    const uint16_t put = (uint16_t)ringbuffer_put(&p->tx_kfifo, buf, len);
+
+    /* DMA 即将读 tx 缓冲, 把 CPU 写的最新数据刷到 RAM. */
+    SCB_CleanDCache_by_Addr((uint32_t *)p->tx_kfifo.buffer_ptr, p->tx_kfifo.buffer_size);
+
+    /* 仅当当前没有 TX 在进行才启动新 DMA, 否则交给 TxCplt 回调链式投递. */
+    DISABLE_INT();
+    if (p->Sending == FALSE)
+    {
+        p->Sending = TRUE;
+        ENABLE_INT();
+        uart_kickoff_tx(p);
+    }
+    else
+    {
+        ENABLE_INT();
+    }
+
+    return put;
+}
+
+/* ========================================================================== */
+/*                                  Public API                                 */
+/* ========================================================================== */
+
+uint16_t comSendBuf(COM_PORT_E port, const uint8_t *buf, uint16_t len)
+{
+    UART_T *p = port_to_uart(port);
+    if (p == NULL || buf == NULL || len == 0U)
+    {
+        return 0U;
+    }
+
+    if (p->SendBefor)
+    {
+        p->SendBefor(); /* 例: RS485 切到发送 */
+    }
+    return uart_send(p, buf, len);
+}
+
+uint16_t comSendChar(COM_PORT_E port, uint8_t ch)
+{
+    return comSendBuf(port, &ch, 1U);
+}
+
+uint8_t comGetChar(COM_PORT_E port, uint8_t *out)
+{
+    UART_T *p = port_to_uart(port);
+    if (p == NULL || out == NULL)
+    {
+        return 0U;
+    }
+    /* DMA 直接写整个 RX 缓冲, CPU 读取前必须把整段对应 cache 行设为 invalid. */
+    SCB_InvalidateDCache_by_Addr((uint32_t *)p->rx_kfifo.buffer_ptr, p->rx_kfifo.buffer_size);
+    return (uint8_t)ringbuffer_getchar(&p->rx_kfifo, out);
+}
+
+uint16_t comGetBuf(COM_PORT_E port, uint8_t *out, uint16_t len)
+{
+    UART_T *p = port_to_uart(port);
+    if (p == NULL || out == NULL || len == 0U)
+    {
+        return 0U;
+    }
+    SCB_InvalidateDCache_by_Addr((uint32_t *)p->rx_kfifo.buffer_ptr, p->rx_kfifo.buffer_size);
+    return (uint16_t)ringbuffer_get(&p->rx_kfifo, out, len);
+}
+
+void comClearTxFifo(COM_PORT_E port)
+{
+    UART_T *p = port_to_uart(port);
+    if (p == NULL)
+    {
+        return;
+    }
+    ringbuffer_reset(&p->tx_kfifo);
+}
+
+void comClearRxFifo(COM_PORT_E port)
+{
+    UART_T *p = port_to_uart(port);
+    if (p == NULL)
+    {
+        return;
+    }
+    /* 让 read 跟随当前 DMA 写入位置, 等价于"舍弃尚未读取的字节". */
+    p->rx_kfifo.read_index = p->rx_kfifo.write_index;
+    p->rx_kfifo.read_mirror = 0U;
+    p->rx_kfifo.write_mirror = 0U;
+}
+
+uint16_t comGetLen(COM_PORT_E port)
+{
+    UART_T *p = port_to_uart(port);
+    if (p == NULL)
+    {
+        return 0U;
+    }
+    return (uint16_t)ringbuffer_data_len(&p->rx_kfifo);
+}
+
+/* ========================================================================== */
+/*                                 comSetBaud                                  */
+/* ========================================================================== */
+
+/**
+ * @brief 仅修改 BRR 寄存器, 不调用 HAL_UART_Init, 避免重新初始化 GPIO/DMA.
+ *
+ * 算法直接镜像 stm32xx_hal_uart.c -> UART_SetConfig() 的 BRR 计算分支
+ * (LPUART / 8x / 16x oversampling), 与 HAL 输出保持比特一致.
+ */
+int comSetBaud(COM_PORT_E port, uint32_t baud)
+{
+    UART_T *p = port_to_uart(port);
     UART_HandleTypeDef *huart;
-
-    uint16_t brrtemp;
     UART_ClockSourceTypeDef clocksource;
-    uint32_t usartdiv;
-    HAL_StatusTypeDef ret = HAL_OK;
-    uint32_t lpuart_ker_ck_pres;
     PLL2_ClocksTypeDef pll2_clocks;
     PLL3_ClocksTypeDef pll3_clocks;
-    uint32_t pclk;
+    uint32_t pclk = 0U;
+    uint32_t usartdiv;
+    HAL_StatusTypeDef ret = HAL_OK;
 
-    pUart = ComToUart(_ucPort);
-    if (pUart == 0)
+    if (p == NULL || baud == 0U)
     {
         return -1;
     }
 
-    huart = pUart->huart;
-    huart->Init.BaudRate = _BaudRate;
-    /*     参考 stm32xx_hal_uart.c --> UART_SetConfig() 中寄存器 BRR 配置部分。   */
-    /*-------------------------- USART BRR Configuration -----------------------*/
+    huart = p->huart;
+    huart->Init.BaudRate = baud;
     UART_GETCLOCKSOURCE(huart, clocksource);
 
-    /* Check LPUART instance */
+    /* ------------------ LPUART ------------------ */
     if (UART_INSTANCE_LOWPOWER(huart))
     {
-        /* Retrieve frequency clock */
         switch (clocksource)
         {
         case UART_CLOCKSOURCE_D3PCLK1:
@@ -1004,14 +842,9 @@ int comSetBaud(COM_PORT_E _ucPort, uint32_t _BaudRate)
             pclk = pll3_clocks.PLL3_Q_Frequency;
             break;
         case UART_CLOCKSOURCE_HSI:
-            if (__HAL_RCC_GET_FLAG(RCC_FLAG_HSIDIV) != 0U)
-            {
-                pclk = (uint32_t)(HSI_VALUE >> (__HAL_RCC_GET_HSI_DIVIDER() >> 3U));
-            }
-            else
-            {
-                pclk = (uint32_t)HSI_VALUE;
-            }
+            pclk = (__HAL_RCC_GET_FLAG(RCC_FLAG_HSIDIV) != 0U)
+                       ? (uint32_t)(HSI_VALUE >> (__HAL_RCC_GET_HSI_DIVIDER() >> 3U))
+                       : (uint32_t)HSI_VALUE;
             break;
         case UART_CLOCKSOURCE_CSI:
             pclk = (uint32_t)CSI_VALUE;
@@ -1025,24 +858,17 @@ int comSetBaud(COM_PORT_E _ucPort, uint32_t _BaudRate)
             break;
         }
 
-        /* If proper clock source reported */
         if (pclk != 0U)
         {
-            /* Compute clock after Prescaler */
-            lpuart_ker_ck_pres = (pclk / UARTPrescTable[huart->Init.ClockPrescaler]);
-
-            /* Ensure that Frequency clock is in the range [3 * baudrate, 4096 * baudrate] */
-            if ((lpuart_ker_ck_pres < (3U * huart->Init.BaudRate)) ||
-                (lpuart_ker_ck_pres > (4096U * huart->Init.BaudRate)))
+            const uint32_t lpuart_ker = pclk / UARTPrescTable[huart->Init.ClockPrescaler];
+            if (lpuart_ker < (3U * baud) || lpuart_ker > (4096U * baud))
             {
                 ret = HAL_ERROR;
             }
             else
             {
-                /* Check computed UsartDiv value is in allocated range
-                   (it is forbidden to write values lower than 0x300 in the LPUART_BRR register) */
-                usartdiv = (uint32_t)(UART_DIV_LPUART(pclk, huart->Init.BaudRate, huart->Init.ClockPrescaler));
-                if ((usartdiv >= LPUART_BRR_MIN) && (usartdiv <= LPUART_BRR_MAX))
+                usartdiv = (uint32_t)UART_DIV_LPUART(pclk, baud, huart->Init.ClockPrescaler);
+                if (usartdiv >= LPUART_BRR_MIN && usartdiv <= LPUART_BRR_MAX)
                 {
                     huart->Instance->BRR = usartdiv;
                 }
@@ -1050,586 +876,457 @@ int comSetBaud(COM_PORT_E _ucPort, uint32_t _BaudRate)
                 {
                     ret = HAL_ERROR;
                 }
-            } /* if ( (lpuart_ker_ck_pres < (3 * huart->Init.BaudRate) ) ||
-                      (lpuart_ker_ck_pres > (4096 * huart->Init.BaudRate) )) */
-        } /* if (pclk != 0) */
-    }
-    /* Check UART Over Sampling to set Baud Rate Register */
-    else if (huart->Init.OverSampling == UART_OVERSAMPLING_8)
-    {
-        switch (clocksource)
-        {
-        case UART_CLOCKSOURCE_D2PCLK1:
-            pclk = HAL_RCC_GetPCLK1Freq();
-            break;
-        case UART_CLOCKSOURCE_D2PCLK2:
-            pclk = HAL_RCC_GetPCLK2Freq();
-            break;
-        case UART_CLOCKSOURCE_PLL2:
-            HAL_RCCEx_GetPLL2ClockFreq(&pll2_clocks);
-            pclk = pll2_clocks.PLL2_Q_Frequency;
-            break;
-        case UART_CLOCKSOURCE_PLL3:
-            HAL_RCCEx_GetPLL3ClockFreq(&pll3_clocks);
-            pclk = pll3_clocks.PLL3_Q_Frequency;
-            break;
-        case UART_CLOCKSOURCE_HSI:
-            if (__HAL_RCC_GET_FLAG(RCC_FLAG_HSIDIV) != 0U)
-            {
-                pclk = (uint32_t)(HSI_VALUE >> (__HAL_RCC_GET_HSI_DIVIDER() >> 3U));
             }
-            else
-            {
-                pclk = (uint32_t)HSI_VALUE;
-            }
-            break;
-        case UART_CLOCKSOURCE_CSI:
-            pclk = (uint32_t)CSI_VALUE;
-            break;
-        case UART_CLOCKSOURCE_LSE:
-            pclk = (uint32_t)LSE_VALUE;
-            break;
-        default:
-            pclk = 0U;
-            ret = HAL_ERROR;
-            break;
         }
+        return (ret == HAL_OK) ? 0 : -2;
+    }
 
-        /* USARTDIV must be greater than or equal to 0d16 */
-        if (pclk != 0U)
+    /* ------------------ Standard U(S)ART ------------------ */
+    switch (clocksource)
+    {
+    case UART_CLOCKSOURCE_D2PCLK1:
+        pclk = HAL_RCC_GetPCLK1Freq();
+        break;
+    case UART_CLOCKSOURCE_D2PCLK2:
+        pclk = HAL_RCC_GetPCLK2Freq();
+        break;
+    case UART_CLOCKSOURCE_PLL2:
+        HAL_RCCEx_GetPLL2ClockFreq(&pll2_clocks);
+        pclk = pll2_clocks.PLL2_Q_Frequency;
+        break;
+    case UART_CLOCKSOURCE_PLL3:
+        HAL_RCCEx_GetPLL3ClockFreq(&pll3_clocks);
+        pclk = pll3_clocks.PLL3_Q_Frequency;
+        break;
+    case UART_CLOCKSOURCE_HSI:
+        pclk = (__HAL_RCC_GET_FLAG(RCC_FLAG_HSIDIV) != 0U)
+                   ? (uint32_t)(HSI_VALUE >> (__HAL_RCC_GET_HSI_DIVIDER() >> 3U))
+                   : (uint32_t)HSI_VALUE;
+        break;
+    case UART_CLOCKSOURCE_CSI:
+        pclk = (uint32_t)CSI_VALUE;
+        break;
+    case UART_CLOCKSOURCE_LSE:
+        pclk = (uint32_t)LSE_VALUE;
+        break;
+    default:
+        pclk = 0U;
+        ret = HAL_ERROR;
+        break;
+    }
+    if (pclk == 0U)
+    {
+        return -3;
+    }
+
+    if (huart->Init.OverSampling == UART_OVERSAMPLING_8)
+    {
+        usartdiv = (uint32_t)UART_DIV_SAMPLING8(pclk, baud, huart->Init.ClockPrescaler);
+        if (usartdiv >= UART_BRR_MIN && usartdiv <= UART_BRR_MAX)
         {
-            usartdiv = (uint32_t)(UART_DIV_SAMPLING8(pclk, huart->Init.BaudRate, huart->Init.ClockPrescaler));
-            if ((usartdiv >= UART_BRR_MIN) && (usartdiv <= UART_BRR_MAX))
-            {
-                brrtemp = (uint16_t)(usartdiv & 0xFFF0U);
-                brrtemp |= (uint16_t)((usartdiv & (uint16_t)0x000FU) >> 1U);
-                huart->Instance->BRR = brrtemp;
-            }
-            else
-            {
-                ret = HAL_ERROR;
-            }
+            uint16_t brr = (uint16_t)(usartdiv & 0xFFF0U);
+            brr |= (uint16_t)((usartdiv & 0x000FU) >> 1U);
+            huart->Instance->BRR = brr;
+        }
+        else
+        {
+            ret = HAL_ERROR;
         }
     }
     else
     {
-        switch (clocksource)
+        usartdiv = (uint32_t)UART_DIV_SAMPLING16(pclk, baud, huart->Init.ClockPrescaler);
+        if (usartdiv >= UART_BRR_MIN && usartdiv <= UART_BRR_MAX)
         {
-        case UART_CLOCKSOURCE_D2PCLK1:
-            pclk = HAL_RCC_GetPCLK1Freq();
-            break;
-        case UART_CLOCKSOURCE_D2PCLK2:
-            pclk = HAL_RCC_GetPCLK2Freq();
-            break;
-        case UART_CLOCKSOURCE_PLL2:
-            HAL_RCCEx_GetPLL2ClockFreq(&pll2_clocks);
-            pclk = pll2_clocks.PLL2_Q_Frequency;
-            break;
-        case UART_CLOCKSOURCE_PLL3:
-            HAL_RCCEx_GetPLL3ClockFreq(&pll3_clocks);
-            pclk = pll3_clocks.PLL3_Q_Frequency;
-            break;
-        case UART_CLOCKSOURCE_HSI:
-            if (__HAL_RCC_GET_FLAG(RCC_FLAG_HSIDIV) != 0U)
-            {
-                pclk = (uint32_t)(HSI_VALUE >> (__HAL_RCC_GET_HSI_DIVIDER() >> 3U));
-            }
-            else
-            {
-                pclk = (uint32_t)HSI_VALUE;
-            }
-            break;
-        case UART_CLOCKSOURCE_CSI:
-            pclk = (uint32_t)CSI_VALUE;
-            break;
-        case UART_CLOCKSOURCE_LSE:
-            pclk = (uint32_t)LSE_VALUE;
-            break;
-        default:
-            pclk = 0U;
+            huart->Instance->BRR = (uint16_t)usartdiv;
+        }
+        else
+        {
             ret = HAL_ERROR;
-            break;
-        }
-
-        if (pclk != 0U)
-        {
-            /* USARTDIV must be greater than or equal to 0d16 */
-            usartdiv = (uint32_t)(UART_DIV_SAMPLING16(pclk, huart->Init.BaudRate, huart->Init.ClockPrescaler));
-            if ((usartdiv >= UART_BRR_MIN) && (usartdiv <= UART_BRR_MAX))
-            {
-                huart->Instance->BRR = (uint16_t)usartdiv;
-            }
-            else
-            {
-                ret = HAL_ERROR;
-            }
         }
     }
-    return ret;
+
+    return (ret == HAL_OK) ? 0 : -4;
 }
 
-/*
-*********************************************************************************************************
-*   函 数 名: comGetLen
-*   功能说明: 取出串口缓冲区个数。
-*   形    参:  _pUart : 串口设备
-*   返 回 值: 1为空。0为不空。
-*********************************************************************************************************
-*/
-uint16_t comGetLen(COM_PORT_E _ucPort)
-{
-    UART_T *pUart;
+/* ========================================================================== */
+/*                                  RS485 stub                                 */
+/* ========================================================================== */
 
-    pUart = ComToUart(_ucPort);
-    if (pUart == 0)
-    {
-        return 0;
-    }
-    return ringbuffer_data_len(&pUart->rx_kfifo);
-}
-
-/* 如果是RS485通信，请按如下格式编写函数， 我们仅举了 USART3作为RS485的例子 */
-
-/*
-*********************************************************************************************************
-*    函 数 名: RS485_InitTXE
-*    功能说明: 配置RS485发送使能口线 TXE
-*    形    参: 无
-*    返 回 值: 无
-*********************************************************************************************************
-*/
 static void RS485_InitTXE(void)
 {
-    GPIO_InitTypeDef gpio_init;
+    GPIO_InitTypeDef gpio_init = {0};
 
-    /* 打开GPIO时钟 */
     RS485_TXEN_GPIO_CLK_ENABLE();
 
-    /* 配置引脚为推挽输出 */
-    gpio_init.Mode = GPIO_MODE_OUTPUT_PP;        /* 推挽输出 */
-    gpio_init.Pull = GPIO_NOPULL;                /* 上下拉电阻不使能 */
-    gpio_init.Speed = GPIO_SPEED_FREQ_VERY_HIGH; /* GPIO速度等级 */
+    gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio_init.Pull = GPIO_NOPULL;
+    gpio_init.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
     gpio_init.Pin = RS485_TXEN_PIN;
     HAL_GPIO_Init(RS485_TXEN_GPIO_PORT, &gpio_init);
+
+    RS485_RX_EN(); /* 默认接收态, 上电不抢总线 */
 }
 
-/*
-*********************************************************************************************************
-*    函 数 名: RS485_SetBaud
-*    功能说明: 修改485串口的波特率。
-*    形    参: _baud : 8倍过采样  波特率.0-12.5Mbps
-*                     16倍过采样 波特率.0-6.25Mbps
-*    返 回 值: 无
-*********************************************************************************************************
-*/
-void RS485_SetBaud(uint32_t _baud)
+void RS485_SetBaud(uint32_t baud) { (void)comSetBaud(COM3, baud); }
+
+static void RS485_SendBefor(void) { RS485_TX_EN(); }
+static void RS485_SendOver(void) { RS485_RX_EN(); }
+static void RS485_ReciveNew(uint8_t byte)
 {
-    comSetBaud(COM3, _baud);
+    (void)byte; /* 留给 MODBUS / 上层协议挂接 */
 }
 
-/*
-*********************************************************************************************************
-*    函 数 名: RS485_SendBefor
-*    功能说明: 发送数据前的准备工作。对于RS485通信，请设置RS485芯片为发送状态，
-*              并修改 UartVarInit()中的函数指针等于本函数名，比如 g_tUart2.SendBefor = RS485_SendBefor
-*    形    参: 无
-*    返 回 值: 无
-*********************************************************************************************************
-*/
-static void RS485_SendBefor(void)
+void RS485_SendBuf(const uint8_t *buf, uint16_t len)
 {
-    RS485_TX_EN(); /* 切换RS485收发芯片为发送模式 */
+    (void)comSendBuf(COM3, buf, len);
 }
 
-/*
-*********************************************************************************************************
-*    函 数 名: RS485_SendOver
-*    功能说明: 发送一串数据结束后的善后处理。对于RS485通信，请设置RS485芯片为接收状态，
-*              并修改 UartVarInit()中的函数指针等于本函数名，比如 g_tUart2.SendOver = RS485_SendOver
-*    形    参: 无
-*    返 回 值: 无
-*********************************************************************************************************
-*/
-static void RS485_SendOver(void)
+void RS485_SendStr(const char *str)
 {
-    RS485_RX_EN(); /* 切换RS485收发芯片为接收模式 */
+    if (str == NULL)
+    {
+        return;
+    }
+    RS485_SendBuf((const uint8_t *)str, (uint16_t)strlen(str));
 }
 
-/*
-*********************************************************************************************************
-*    函 数 名: RS485_ReciveNew
-*    功能说明: 接收到新的数据
-*    形    参: _byte 接收到的新数据
-*    返 回 值: 无
-*********************************************************************************************************
-*/
-static void RS485_ReciveNew(uint8_t _byte)
+/* ========================================================================== */
+/*                              Init / DeInit                                  */
+/* ========================================================================== */
+
+/**
+ * @brief 初始化指定的 UART_T 上下文 + 启动 RX DMA.
+ */
+static void uart_port_setup(UART_T *p,
+                            UART_HandleTypeDef *huart,
+                            uint8_t *tx_buf, uint16_t tx_size,
+                            uint8_t *rx_buf, uint16_t rx_size,
+                            void (*before)(void),
+                            void (*over)(void),
+                            void (*recv_new)(uint8_t))
 {
-    // MODH_ReciveNew(_byte);
+    p->huart = huart;
+    p->SendBefor = before;
+    p->SendOver = over;
+    p->ReciveNew = recv_new;
+    p->Sending = FALSE;
+
+    ringbuffer_init(&p->tx_kfifo, tx_buf, tx_size);
+    ringbuffer_init(&p->rx_kfifo, rx_buf, rx_size);
+
+    if (HAL_UARTEx_ReceiveToIdle_DMA(huart, rx_buf, rx_size) != HAL_OK)
+    {
+        ERROR_HANDLER();
+    }
 }
 
-/*
-*********************************************************************************************************
-*    函 数 名: RS485_SendBuf
-*    功能说明: 通过RS485芯片发送一串数据。注意，本函数不等待发送完毕。
-*    形    参: _ucaBuf : 数据缓冲区
-*              _usLen : 数据长度
-*    返 回 值: 无
-*********************************************************************************************************
-*/
-void RS485_SendBuf(uint8_t *_ucaBuf, uint16_t _usLen)
-{
-    comSendBuf(COM3, _ucaBuf, _usLen);
-}
-
-/*
-*********************************************************************************************************
-*    函 数 名: RS485_SendStr
-*    功能说明: 向485总线发送一个字符串，0结束。
-*    形    参: _pBuf 字符串，0结束
-*    返 回 值: 无
-*********************************************************************************************************
-*/
-void RS485_SendStr(char *_pBuf)
-{
-    RS485_SendBuf((uint8_t *)_pBuf, strlen(_pBuf));
-}
-
-/*
-*********************************************************************************************************
-*   函 数 名: UartVarInit
-*   功能说明: 初始化串口相关的变量
-*   形    参: 无
-*   返 回 值: 无
-*********************************************************************************************************
-*/
-static void UartVarInit(void)
-{
-#if UART1_FIFO_EN == 1
-    g_tUart1.huart = &huart1;
-    g_tUart1.SendBefor = 0; /* 发送数据前的回调函数 */
-    g_tUart1.SendOver = 0;  /* 发送完毕后的回调函数 */
-    g_tUart1.ReciveNew = 0; /* 接收到新数据后的回调函数 */
-    g_tUart1.Sending = 0;   /* 正在发送中标志 */
-#endif
-#if UART2_FIFO_EN == 1
-    g_tUart2.huart = &huart2;
-    g_tUart2.SendBefor = 0; /* 发送数据前的回调函数 */
-    g_tUart2.SendOver = 0;  /* 发送完毕后的回调函数 */
-    g_tUart2.ReciveNew = 0; /* 接收到新数据后的回调函数 */
-    g_tUart2.Sending = 0;   /* 正在发送中标志 */
-#endif
-#if UART3_FIFO_EN == 1
-    g_tUart3.huart = &huart3;
-    g_tUart3.SendBefor = RS485_SendBefor; /* 发送数据前的回调函数 */
-    g_tUart3.SendOver = RS485_SendOver;   /* 发送完毕后的回调函数 */
-    g_tUart3.ReciveNew = RS485_ReciveNew; /* 接收到新数据后的回调函数 */
-    g_tUart3.Sending = 0;                 /* 正在发送中标志 */
-#endif
-#if UART4_FIFO_EN == 1
-    g_tUart4.huart = &huart4;
-    g_tUart4.SendBefor = 0; /* 发送数据前的回调函数 */
-    g_tUart4.SendOver = 0;  /* 发送完毕后的回调函数 */
-    g_tUart4.ReciveNew = 0; /* 接收到新数据后的回调函数 */
-    g_tUart4.Sending = 0;   /* 正在发送中标志 */
-#endif
-#if UART5_FIFO_EN == 1
-    g_tUart5.huart = &huart5;
-    g_tUart5.SendBefor = 0; /* 发送数据前的回调函数 */
-    g_tUart5.SendOver = 0;  /* 发送完毕后的回调函数 */
-    g_tUart5.ReciveNew = 0; /* 接收到新数据后的回调函数 */
-    g_tUart5.Sending = 0;   /* 正在发送中标志 */
-#endif
-#if UART6_FIFO_EN == 1
-    g_tUart6.huart = &huart6;
-    g_tUart6.SendBefor = 0; /* 发送数据前的回调函数 */
-    g_tUart6.SendOver = 0;  /* 发送完毕后的回调函数 */
-    g_tUart6.ReciveNew = 0; /* 接收到新数据后的回调函数 */
-    g_tUart6.Sending = 0;   /* 正在发送中标志 */
-#endif
-#if UART7_FIFO_EN == 1
-    g_tUart7.huart = &huart7;
-    g_tUart7.SendBefor = 0; /* 发送数据前的回调函数 */
-    g_tUart7.SendOver = 0;  /* 发送完毕后的回调函数 */
-    g_tUart7.ReciveNew = 0; /* 接收到新数据后的回调函数 */
-    g_tUart7.Sending = 0;   /* 正在发送中标志 */
-#endif
-}
-
-/*
-*********************************************************************************************************
-*   函 数 名: bsp_InitUart
-*   功能说明: 初始化串口硬件，并对全局变量赋初值.
-*   形    参: 无
-*   返 回 值: 无
-*********************************************************************************************************
-*/
 void bsp_InitUart(void)
 {
-    UartVarInit();   /* 必须先初始化全局变量,再配置硬件 */
-    RS485_InitTXE(); /* 配置RS485芯片的发送使能硬件，配置为推挽输出 */
+    /* RS485 控制脚先就绪, 避免 USART3 启用后短暂处于发送态. */
+    RS485_InitTXE();
+
 #if UART1_FIFO_EN == 1
-    MX_USART1_UART_Init(); /* 初始化串口 */
-    ringbuffer_init(&g_tUart1.tx_kfifo, s_tx_buf1, (UART1_TX_BUF_SIZE));
-    ringbuffer_init(&g_tUart1.rx_kfifo, s_rx_buf1, roundup_pow_of_two(UART1_RX_BUF_SIZE));
-    HAL_UARTEx_ReceiveToIdle_DMA(&huart1, s_rx_buf1, roundup_pow_of_two(UART1_RX_BUF_SIZE)); /* 启动DMA */
+    MX_USART1_UART_Init();
+    uart_port_setup(&s_uart1, &huart1,
+                    s_tx_buf1, (uint16_t)UART1_TX_BUF_SIZE,
+                    s_rx_buf1, (uint16_t)find_PowerOf2(UART1_RX_BUF_SIZE, 0),
+                    NULL, NULL, NULL);
 #endif
+
 #if UART2_FIFO_EN == 1
-    MX_USART2_UART_Init(); /* 初始化串口 */
-    ringbuffer_init(&g_tUart2.tx_kfifo, s_tx_buf2, (UART2_TX_BUF_SIZE));
-    ringbuffer_init(&g_tUart2.rx_kfifo, s_rx_buf2, roundup_pow_of_two(UART2_RX_BUF_SIZE));
-    HAL_UARTEx_ReceiveToIdle_DMA(&huart2, s_rx_buf2, roundup_pow_of_two(UART2_RX_BUF_SIZE)); /* 启动DMA */
+    /* 用户启用 USART2 时需自行提供 MX_USART2_UART_Init() 与 MSP/IRQ 分支. */
+    MX_USART2_UART_Init();
+    uart_port_setup(&s_uart2, &huart2,
+                    s_tx_buf2, (uint16_t)UART2_TX_BUF_SIZE,
+                    s_rx_buf2, (uint16_t)find_PowerOf2(UART2_RX_BUF_SIZE, 0),
+                    NULL, NULL, NULL);
 #endif
+
 #if UART3_FIFO_EN == 1
-    MX_USART3_UART_Init(); /* 初始化串口 */
-    ringbuffer_init(&g_tUart3.tx_kfifo, s_tx_buf3, (UART3_TX_BUF_SIZE));
-    ringbuffer_init(&g_tUart3.rx_kfifo, s_rx_buf3, roundup_pow_of_two(UART3_RX_BUF_SIZE));
-    HAL_UARTEx_ReceiveToIdle_DMA(&huart3, s_rx_buf3, roundup_pow_of_two(UART3_RX_BUF_SIZE)); /* 启动DMA */
+    MX_USART3_UART_Init();
+    uart_port_setup(&s_uart3, &huart3,
+                    s_tx_buf3, (uint16_t)UART3_TX_BUF_SIZE,
+                    s_rx_buf3, (uint16_t)find_PowerOf2(UART3_RX_BUF_SIZE, 0),
+                    RS485_SendBefor, RS485_SendOver, RS485_ReciveNew);
 #endif
+
 #if UART4_FIFO_EN == 1
-    MX_USART4_UART_Init(); /* 初始化串口 */
-    ringbuffer_init(&g_tUart4.tx_kfifo, s_tx_buf4, (UART4_TX_BUF_SIZE));
-    ringbuffer_init(&g_tUart4.rx_kfifo, s_rx_buf4, roundup_pow_of_two(UART4_RX_BUF_SIZE));
-    HAL_UARTEx_ReceiveToIdle_DMA(&huart4, s_rx_buf4, roundup_pow_of_two(UART4_RX_BUF_SIZE)); /* 启动DMA */
+    /* 用户启用 UART4 时需自行提供 MX_USART4_UART_Init() 与 MSP/IRQ 分支. */
+    MX_USART4_UART_Init();
+    uart_port_setup(&s_uart4, &huart4,
+                    s_tx_buf4, (uint16_t)UART4_TX_BUF_SIZE,
+                    s_rx_buf4, (uint16_t)find_PowerOf2(UART4_RX_BUF_SIZE, 0),
+                    NULL, NULL, NULL);
 #endif
+
 #if UART5_FIFO_EN == 1
-    MX_USART5_UART_Init(); /* 初始化串口 */
-    ringbuffer_init(&g_tUart5.tx_kfifo, s_tx_buf5, (UART5_TX_BUF_SIZE));
-    ringbuffer_init(&g_tUart5.rx_kfifo, s_rx_buf5, roundup_pow_of_two(UART5_RX_BUF_SIZE));
-    HAL_UARTEx_ReceiveToIdle_DMA(&huart5, s_rx_buf5, roundup_pow_of_two(UART5_RX_BUF_SIZE)); /* 启动DMA */
+    /* 用户启用 UART5 时需自行提供 MX_USART5_UART_Init() 与 MSP/IRQ 分支. */
+    MX_USART5_UART_Init();
+    uart_port_setup(&s_uart5, &huart5,
+                    s_tx_buf5, (uint16_t)UART5_TX_BUF_SIZE,
+                    s_rx_buf5, (uint16_t)find_PowerOf2(UART5_RX_BUF_SIZE, 0),
+                    NULL, NULL, NULL);
 #endif
+
 #if UART6_FIFO_EN == 1
-    MX_USART6_UART_Init(); /* 初始化串口 */
-    ringbuffer_init(&g_tUart6.tx_kfifo, s_tx_buf6, (UART6_TX_BUF_SIZE));
-    ringbuffer_init(&g_tUart6.rx_kfifo, s_rx_buf6, roundup_pow_of_two(UART6_RX_BUF_SIZE));
-    HAL_UARTEx_ReceiveToIdle_DMA(&huart6, s_rx_buf6, roundup_pow_of_two(UART6_RX_BUF_SIZE)); /* 启动DMA */
+    MX_USART6_UART_Init();
+    uart_port_setup(&s_uart6, &huart6,
+                    s_tx_buf6, (uint16_t)UART6_TX_BUF_SIZE,
+                    s_rx_buf6, (uint16_t)find_PowerOf2(UART6_RX_BUF_SIZE, 0),
+                    NULL, NULL, NULL);
 #endif
+
 #if UART7_FIFO_EN == 1
-    MX_USART7_UART_Init(); /* 初始化串口 */
-    ringbuffer_init(&g_tUart7.tx_kfifo, s_tx_buf7, (UART7_TX_BUF_SIZE));
-    ringbuffer_init(&g_tUart7.rx_kfifo, s_rx_buf7, roundup_pow_of_two(UART7_RX_BUF_SIZE));
-    HAL_UARTEx_ReceiveToIdle_DMA(&huart7, s_rx_buf7, roundup_pow_of_two(UART7_RX_BUF_SIZE)); /* 启动DMA */
+    /* 用户启用 UART7 时需自行提供 MX_USART7_UART_Init() 与 MSP/IRQ 分支. */
+    MX_USART7_UART_Init();
+    uart_port_setup(&s_uart7, &huart7,
+                    s_tx_buf7, (uint16_t)UART7_TX_BUF_SIZE,
+                    s_rx_buf7, (uint16_t)find_PowerOf2(UART7_RX_BUF_SIZE, 0),
+                    NULL, NULL, NULL);
 #endif
+
 #if UART8_FIFO_EN == 1
-    MX_USART8_UART_Init(); /* 初始化串口 */
-    ringbuffer_init(&g_tUart8.tx_kfifo, s_tx_buf8, (UART8_TX_BUF_SIZE));
-    ringbuffer_init(&g_tUart8.rx_kfifo, s_rx_buf8, roundup_pow_of_two(UART8_RX_BUF_SIZE));
-    HAL_UARTEx_ReceiveToIdle_DMA(&huart8, s_rx_buf8, roundup_pow_of_two(UART8_RX_BUF_SIZE)); /* 启动DMA */
+    /* 用户启用 UART8 时需自行提供 MX_USART8_UART_Init() 与 MSP/IRQ 分支. */
+    MX_USART8_UART_Init();
+    uart_port_setup(&s_uart8, &huart8,
+                    s_tx_buf8, (uint16_t)UART8_TX_BUF_SIZE,
+                    s_rx_buf8, (uint16_t)roundup_pow_of_two(UART8_RX_BUF_SIZE),
+                    NULL, NULL, NULL);
 #endif
 }
 
-#if defined(__SHELL_H__) && defined(DEBUG_MODE)
-static int com_uart(int argc, char *argv[])
+void bsp_DeInitUart(void)
 {
-    static int8_t com_num = 0;
+#if UART1_FIFO_EN == 1
+    HAL_UART_DeInit(&huart1);
+#endif
+#if UART2_FIFO_EN == 1
+    HAL_UART_DeInit(&huart2);
+#endif
+#if UART3_FIFO_EN == 1
+    HAL_UART_DeInit(&huart3);
+#endif
+#if UART4_FIFO_EN == 1
+    HAL_UART_DeInit(&huart4);
+#endif
+#if UART5_FIFO_EN == 1
+    HAL_UART_DeInit(&huart5);
+#endif
+#if UART6_FIFO_EN == 1
+    HAL_UART_DeInit(&huart6);
+#endif
+#if UART7_FIFO_EN == 1
+    HAL_UART_DeInit(&huart7);
+#endif
+#if UART8_FIFO_EN == 1
+    HAL_UART_DeInit(&huart8);
+#endif
+}
 
-    const char *help_info[] =
-        {
-            "probe Select Uart 1 - 8",
-            "read len char buff",
-            "write xxx",
-            "clear",
-            "baud XXX",
-        };
+/* ========================================================================== */
+/*                                  Shell cmd                                  */
+/* ========================================================================== */
 
-    if (!strcmp(argv[1], "probe")) // 选择串口号
+#if defined(__SHELL_H__) && defined(DEBUG_MODE)
+
+static int _com_cmd(int argc, char *argv[])
+{
+    static int8_t s_com_num = 0;
+
+    static const char *help_info[] = {
+        "probe <1..8>     select active port",
+        "read len         show RX buffer length",
+        "read char        read 1 byte from RX",
+        "read buff <n>    read up to n bytes (hex dump)",
+        "write <text>     send a string",
+        "clear            clear TX & RX FIFO",
+        "baud <bps>       change baudrate",
+    };
+
+    if (argc < 2)
     {
-        com_num = atoi(argv[2]);
-
-        if (!ComToUart(com_num)) // 串口号错误列出串口
+        printf("Usage:\r\n");
+        for (uint32_t i = 0; i < sizeof(help_info) / sizeof(help_info[0]); i++)
         {
-            com_num = 0;
-            printf("COM Select Error(Range");
-            for (uint8_t i = 0; i <= 8; i++)
+            printf("  %s %s\r\n", argv[0], help_info[i]);
+        }
+        return 0;
+    }
+
+    /* probe ----------------------------------------------------- */
+    if (!strcmp(argv[1], "probe"))
+    {
+        if (argc < 3)
+        {
+            printf("usage: %s probe <1..8>\r\n", argv[0]);
+            return -1;
+        }
+        int8_t want = (int8_t)atoi(argv[2]);
+        if (port_to_uart((COM_PORT_E)want) == NULL)
+        {
+            printf("COM%d not enabled. Available:", want);
+            for (int8_t i = COM1; i <= COM8; i++)
             {
-                if ((ComToUart(i)))
+                if (port_to_uart((COM_PORT_E)i) != NULL)
                 {
                     printf(" %d", i);
                 }
             }
-            printf(").\r\n");
-
-            return 0;
+            printf("\r\n");
+            return -1;
         }
-
-        printf("COM Select %d OK\r\n", com_num);
-
+        s_com_num = want;
+        printf("COM%d selected\r\n", s_com_num);
         return 0;
     }
-    else if (!strcmp(argv[1], "read"))
-    {
-        if (argc >= 2 && !strcmp(argv[2], "len"))
-        {
-            uint16_t length = comGetLen((COM_PORT_E)com_num);
-            printf("length = %d\r\n", length);
 
+    if (s_com_num == 0)
+    {
+        printf("no port selected, try: %s probe <n>\r\n", argv[0]);
+        return -1;
+    }
+
+    /* read ------------------------------------------------------ */
+    if (!strcmp(argv[1], "read"))
+    {
+        if (argc < 3)
+        {
+            printf("usage: %s read len|char|buff\r\n", argv[0]);
+            return -1;
+        }
+        if (!strcmp(argv[2], "len"))
+        {
+            printf("length = %u\r\n", comGetLen((COM_PORT_E)s_com_num));
             return 0;
         }
-        else if (argc >= 2 && !strcmp(argv[2], "char"))
+        if (!strcmp(argv[2], "char"))
         {
             uint8_t data;
-            if (comGetChar((COM_PORT_E)com_num, &data))
+            if (comGetChar((COM_PORT_E)s_com_num, &data))
             {
-                printf("read char = 0x%02X(%c)\r\n", data, data);
+                printf("read = 0x%02X (%c)\r\n", data, data);
             }
             else
             {
-                printf("read char NULL\r\n");
+                printf("RX empty\r\n");
             }
-
             return 0;
         }
-        else if (argc >= 2 && !strcmp(argv[2], "buff"))
+        if (!strcmp(argv[2], "buff"))
         {
-            if (argc >= 4)
+            if (argc < 4)
             {
-
-                uint16_t length = atoi(argv[3]);
-                uint8_t *buff = malloc(length);
-                if (!buff)
-                {
-                    printf("Low memory!\r\n");
-
-                    return -1;
-                }
-                size_t size = comGetBuf((COM_PORT_E)com_num, buff, length);
-                if (size)
-                {
-                    dump_hex(buff, size, 16);
-                }
-                else
-                {
-                    printf("read buff NULL\r\n");
-                }
-
-                free(buff);
+                printf("usage: %s read buff <len>\r\n", argv[0]);
+                return -1;
+            }
+            uint16_t length = (uint16_t)atoi(argv[3]);
+            if (length == 0U)
+            {
+                return -1;
+            }
+            uint8_t *buff = (uint8_t *)malloc(length);
+            if (buff == NULL)
+            {
+                printf("low memory\r\n");
+                return -1;
+            }
+            uint16_t got = comGetBuf((COM_PORT_E)s_com_num, buff, length);
+            if (got)
+            {
+                dump_hex(buff, got, 16);
             }
             else
             {
-                printf("parameter Error.\r\ncom buff [len]\r\n");
+                printf("RX empty\r\n");
             }
+            free(buff);
+            return 0;
         }
-        else
-        {
-            printf("parameter Error.\r\n");
-            printf("%s ", argv[0]);
-            printf("%s\r\n", help_info[1]);
-            return -1;
-        }
-        printf("Select COM%d Read\r\n", com_num);
-    }
-    else if (!strcmp(argv[1], "write"))
-    {
-        if (argc >= 3)
-        {
-            comSendBuf((COM_PORT_E)com_num, (uint8_t *)argv[2], strlen(argv[2]));
-        }
-        else
-        {
-            printf("write parameter Error.\r\n");
-            printf("%s ", argv[0]);
-            printf("%s\r\n", help_info[2]);
-            return -1;
-        }
-    }
-    else if (!strcmp(argv[1], "clear"))
-    {
-        comClearRxFifo((COM_PORT_E)com_num);
-        comClearTxFifo((COM_PORT_E)com_num);
-    }
-    else if (!strcmp(argv[1], "baud"))
-    {
-        uint32_t baud;
-        if (argc >= 3)
-        {
-            baud = strtol(argv[2], NULL, 0);
-            if (baud)
-            {
-                return comSetBaud((COM_PORT_E)com_num, baud);
-            }
-            else
-            {
-                printf("com baud error = 0\r\n");
-            }
-        }
-        else
-        {
-            printf("parameter Error.\r\n");
-            printf("%s ", argv[0]);
-            printf("%s\r\n", help_info[4]);
-            return -1;
-        }
-    }
-    else
-    {
-        printf("Error Command\r\nUsage:\r\n");
-        for (uint32_t i = 0; i < sizeof(help_info) / sizeof(char *); i++)
-        {
-            printf("%s ", argv[0]);
-            printf("%s\r\n", help_info[i]);
-        }
-        printf("\r\n");
+        printf("unknown read sub-cmd: %s\r\n", argv[2]);
+        return -1;
     }
 
-    return 0;
+    /* write ----------------------------------------------------- */
+    if (!strcmp(argv[1], "write"))
+    {
+        if (argc < 3)
+        {
+            printf("usage: %s write <text>\r\n", argv[0]);
+            return -1;
+        }
+        comSendBuf((COM_PORT_E)s_com_num, (const uint8_t *)argv[2], (uint16_t)strlen(argv[2]));
+        return 0;
+    }
+
+    /* clear ----------------------------------------------------- */
+    if (!strcmp(argv[1], "clear"))
+    {
+        comClearRxFifo((COM_PORT_E)s_com_num);
+        comClearTxFifo((COM_PORT_E)s_com_num);
+        printf("COM%d FIFO cleared\r\n", s_com_num);
+        return 0;
+    }
+
+    /* baud ------------------------------------------------------ */
+    if (!strcmp(argv[1], "baud"))
+    {
+        if (argc < 3)
+        {
+            printf("usage: %s baud <bps>\r\n", argv[0]);
+            return -1;
+        }
+        uint32_t baud = (uint32_t)strtoul(argv[2], NULL, 0);
+        if (baud == 0U)
+        {
+            printf("invalid baud\r\n");
+            return -1;
+        }
+        int rc = comSetBaud((COM_PORT_E)s_com_num, baud);
+        if (rc == 0)
+        {
+            printf("COM%d -> %u bps\r\n", s_com_num, (unsigned)baud);
+        }
+        else
+        {
+            printf("comSetBaud failed (%d)\r\n", rc);
+        }
+        return rc;
+    }
+
+    printf("unknown sub-command: %s\r\n", argv[1]);
+    return -1;
 }
-// 导出到命令列表里
-SHELL_EXPORT_CMD(SHELL_CMD_PERMISSION(0) | SHELL_CMD_TYPE(SHELL_TYPE_CMD_MAIN), com, com_uart, com find[dev | part]);
-#endif // #ifdef DEBUG_MODE
 
-/*
-*********************************************************************************************************
-*   函 数 名: fputc
-*   功能说明: 重定义putc函数，这样可以使用printf函数从串口1打印输出
-*   形    参: 无
-*   返 回 值: 无
-*********************************************************************************************************
-*/
+SHELL_EXPORT_CMD(SHELL_CMD_PERMISSION(0) | SHELL_CMD_TYPE(SHELL_TYPE_CMD_MAIN),
+                 com, _com_cmd, com[probe read write clear baud]);
+#endif /* __SHELL_H__ && DEBUG_MODE */
+
+/* ========================================================================== */
+/*                             stdio retarget (printf)                         */
+/* ========================================================================== */
+
+/**
+ * @brief 把 printf 重定向到 COM1.
+ */
 int fputc(int ch, FILE *f)
 {
-#if 1 /* 将需要printf的字符通过串口中断FIFO发送出去，printf函数会立即返回 */
-    comSendChar(COM1, ch);
-
+    (void)f;
+    comSendChar(COM1, (uint8_t)ch);
     return ch;
-#else /* 采用阻塞方式发送每个字符,等待数据发送完毕 */
-    /* 写一个字节到USART1 */
-    USART6->TDR = ch;
-
-    /* 等待发送结束 */
-    while ((USART6->ISR & USART_ISR_TC) == 0)
-    {
-    }
-
-    return ch;
-#endif
 }
 
-/*
-*********************************************************************************************************
-*   函 数 名: fgetc
-*   功能说明: 重定义getc函数，这样可以使用getchar函数从串口1输入数据
-*   形    参: 无
-*   返 回 值: 无
-*********************************************************************************************************
-*/
+/**
+ * @brief 把 getchar 重定向到 COM1 (阻塞读).
+ */
 int fgetc(FILE *f)
 {
-
-#if 1 /* 从串口接收FIFO中取1个数据, 只有取到数据才返回 */
-    uint8_t ucData;
-
-    while (comGetChar(COM1, &ucData) == 0)
-        ;
-
-    return ucData;
-#else
-    /* 等待接收到数据 */
-    while ((USART1->ISR & USART_ISR_RXNE) == 0)
+    (void)f;
+    uint8_t ch;
+    while (comGetChar(COM1, &ch) == 0U)
     {
     }
-
-    return (int)USART1->RDR;
-#endif
+    return (int)ch;
 }
 
-/***************************** 安富莱电子 www.armfly.com (END OF FILE) *********************************/
+/******************** End of file ********************/
