@@ -1,13 +1,7 @@
-/*
-*********************************************************************************************************
-*
-*    模块名称 : 字符串操作\数值转换
-*    文件名称 : bsp_user_lib.h
-*    版    本 : V1.2
-*    说    明 : 头文件
-*
-*********************************************************************************************************
-*/
+/**
+ * @file    bsp_user_lib.h
+ * @brief   通用工具函数库头文件（字符串操作、数值转换、CRC16）
+ */
 
 #ifndef __BSP_USER_LIB_H
 #define __BSP_USER_LIB_H
@@ -59,17 +53,17 @@ static __inline__ uint32_t roundup_pow_of_two(uint32_t _num) /* 找出最接近 
     _num |= _num >> 8;
     _num |= _num >> 16;
     // return _num + 1; //向上取整为2次幂
-    return (_num + 1) >> 1; //向下取整为2次幂
+    return (_num + 1) >> 1; // 向下取整为2次幂
 #endif
 }
 
 #ifndef USER_ALIGN
-#define USER_ALIGN(size, align) (((size) + (align)-1) & ~((align)-1)) /* size 向上取align的整数倍 */
+#define USER_ALIGN(size, align) (((size) + (align) - 1) & ~((align) - 1)) /* size 向上取align的整数倍 */
 #endif
 
 #ifndef USER_ALIGN_DOWN
-#define USER_ALIGN_DOWN(size, align) ((size) & ~((align)-1)) /* size 向下取align的整数倍 */
+#define USER_ALIGN_DOWN(size, align) ((size) & ~((align) - 1)) /* size 向下取align的整数倍 */
 #endif
 
 #endif
-/***************************** 安富莱电子 www.armfly.com (END OF FILE) *********************************/
+/* end of file */

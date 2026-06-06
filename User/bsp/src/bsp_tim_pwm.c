@@ -1,25 +1,7 @@
-/*
-*********************************************************************************************************
-*
-*   模块名称 : TIM基本定时中断和PWM驱动模块
-*   文件名称 : bsp_tim_pwm.c
-*   版    本 : V1.6
-*   说    明 : 利用STM32H7内部TIM输出PWM信号， 并实现基本的定时中断
-*   修改记录 :
-*   版本号      日期        作者     说明
-*   V1.0       2013-08-16 armfly  正式发布
-*   V1.1       2014-06-15 armfly  完善 bsp_SetTIMOutPWM，当占空比=0和100%时，关闭定时器，GPIO配置为输出
-*   V1.2       2015-05-08 armfly  解决TIM8不能输出PWM的问题。
-*   V1.3       2015-07-23 armfly  初始化定时器，必须设置 TIM_TimeBaseInitStruct.TIM_RepetitionCounter = 0x0000;
-*                                 TIM1 和 TIM8 必须设置。否则蜂鸣器的控制不正常。
-*   V1.4       2015-07-30 armfly  增加反相引脚输出PWM函数 bsp_SetTIMOutPWM_N();
-*   V1.5       2016-02-01 armfly  去掉 TIM_OC1PreloadConfig(TIMx, TIM_OCPreload_Enable);
-*   V1.6       2016-02-27 armfly  解决TIM14无法中断的BUG, TIM8_TRG_COM_TIM14_IRQn
-*
-*   right (C), 2018-2030, 安富莱电子 www.armfly.com
-*
-*********************************************************************************************************
-*/
+/**
+ * @file    bsp_tim_pwm.c
+ * @brief   TIM PWM 输出及基本定时中断驱动模块（STM32H7 HAL）
+ */
 
 #include "bsp.h"
 
@@ -79,14 +61,11 @@ static uint8_t bsp_GetAFofTIM(TIM_TypeDef *TIMx);
 static void bsp_ConfigTimGpio(GPIO_TypeDef *GPIOx, uint16_t GPIO_PinX, TIM_TypeDef *TIMx);
 static void bsp_ConfigGpioOut(GPIO_TypeDef *GPIOx, uint16_t GPIO_PinX);
 
-/*
-*********************************************************************************************************
-*    函 数 名: bsp_RCC_GPIO_Enable
-*    功能说明: 使能GPIO时钟
-*    形    参: GPIOx GPIOA - GPIOK
-*    返 回 值: 无
-*********************************************************************************************************
-*/
+/**
+ * @brief  使能指定 GPIO 端口时钟
+ * @param  GPIOx  目标 GPIO 端口（GPIOA–GPIOK）
+ * @retval 无
+ */
 static void bsp_RCC_GPIO_Enable(GPIO_TypeDef *GPIOx)
 {
     if (GPIOx == GPIOA)
@@ -113,14 +92,11 @@ static void bsp_RCC_GPIO_Enable(GPIO_TypeDef *GPIOx)
         __HAL_RCC_GPIOK_CLK_ENABLE();
 }
 
-/*
-*********************************************************************************************************
-*    函 数 名: bsp_RCC_TIM_Enable
-*    功能说明: 使能TIM RCC 时钟
-*    形    参: TIMx TIM1 - TIM17
-*    返 回 值: 无
-*********************************************************************************************************
-*/
+/**
+ * @brief  使能指定 TIM 外设时钟
+ * @param  TIMx  目标定时器（TIM1–TIM17）
+ * @retval 无
+ */
 static void bsp_RCC_TIM_Enable(TIM_TypeDef *TIMx)
 {
     if (TIMx == TIM1)
@@ -160,14 +136,11 @@ static void bsp_RCC_TIM_Enable(TIM_TypeDef *TIMx)
     }
 }
 
-/*
-*********************************************************************************************************
-*    函 数 名: bsp_RCC_TIM_Disable
-*    功能说明: 关闭TIM RCC 时钟
-*    形    参: TIMx TIM1 - TIM17
-*    返 回 值: TIM外设时钟名
-*********************************************************************************************************
-*/
+/**
+ * @brief  关闭指定 TIM 外设时钟
+ * @param  TIMx  目标定时器（TIM1–TIM17）
+ * @retval 无
+ */
 static void bsp_RCC_TIM_Disable(TIM_TypeDef *TIMx)
 {
     /*
@@ -211,14 +184,11 @@ static void bsp_RCC_TIM_Disable(TIM_TypeDef *TIMx)
     }
 }
 
-/*
-*********************************************************************************************************
-*    函 数 名: bsp_GetAFofTIM
-*    功能说明: 根据TIM 得到AF寄存器配置
-*    形    参: TIMx TIM1 - TIM17
-*    返 回 值: AF寄存器配置
-*********************************************************************************************************
-*/
+/**
+ * @brief  根据 TIM 实例查询对应的 GPIO_AF 复用编号
+ * @param  TIMx  目标定时器（TIM1–TIM17）
+ * @retval GPIO_AFx_TIMy 复用编号
+ */
 static uint8_t bsp_GetAFofTIM(TIM_TypeDef *TIMx)
 {
     uint8_t ret = 0;
@@ -255,16 +225,13 @@ static uint8_t bsp_GetAFofTIM(TIM_TypeDef *TIMx)
     return ret;
 }
 
-/*
-*********************************************************************************************************
-*    函 数 名: bsp_ConfigTimGpio
-*    功能说明: 配置GPIO和TIM时钟， GPIO连接到TIM输出通道
-*    形    参: GPIOx : GPIOA - GPIOK
-*              GPIO_PinX : GPIO_PIN_0 - GPIO__PIN_15
-*              TIMx : TIM1 - TIM17
-*    返 回 值: 无
-*********************************************************************************************************
-*/
+/**
+ * @brief  将 GPIO 配置为 TIM 复用推挽输出，并使能对应时钟
+ * @param  GPIOx     GPIO 端口
+ * @param  GPIO_PinX GPIO 引脚（GPIO_PIN_0..15）
+ * @param  TIMx      目标定时器
+ * @retval 无
+ */
 static void bsp_ConfigTimGpio(GPIO_TypeDef *GPIOx, uint16_t GPIO_PinX, TIM_TypeDef *TIMx)
 {
     GPIO_InitTypeDef GPIO_InitStruct;
@@ -283,15 +250,12 @@ static void bsp_ConfigTimGpio(GPIO_TypeDef *GPIOx, uint16_t GPIO_PinX, TIM_TypeD
     HAL_GPIO_Init(GPIOx, &GPIO_InitStruct);
 }
 
-/*
-*********************************************************************************************************
-*    函 数 名: bsp_ConfigGpioOut
-*    功能说明: 配置GPIO为推挽输出。主要用于PWM输出，占空比为0和100的情况。
-*    形    参: GPIOx : GPIOA - GPIOK
-*              GPIO_PinX : GPIO_PIN_0 - GPIO__PIN_15
-*    返 回 值: 无
-*********************************************************************************************************
-*/
+/**
+ * @brief  将 GPIO 配置为普通推挽输出（用于 PWM 占空比 0% 或 100% 时直接驱动）
+ * @param  GPIOx     GPIO 端口
+ * @param  GPIO_PinX GPIO 引脚
+ * @retval 无
+ */
 static void bsp_ConfigGpioOut(GPIO_TypeDef *GPIOx, uint16_t GPIO_PinX)
 {
     GPIO_InitTypeDef GPIO_InitStruct;
@@ -305,20 +269,16 @@ static void bsp_ConfigGpioOut(GPIO_TypeDef *GPIOx, uint16_t GPIO_PinX)
     HAL_GPIO_Init(GPIOx, &GPIO_InitStruct);
 }
 
-/*
-*********************************************************************************************************
-*    函 数 名: bsp_SetTIMOutPWM
-*    功能说明: 设置引脚输出的PWM信号的频率和占空比.  当频率为0，并且占空为0时，关闭定时器，GPIO输出0；
-*              当频率为0，占空比为100%时，GPIO输出1.
-*    形    参: GPIOx : GPIOA - GPIOK
-*              GPIO_Pin : GPIO_PIN_0 - GPIO__PIN_15
-*              TIMx : TIM1 - TIM17
-*             _ucChannel：使用的定时器通道，范围1 - 4
-*              _ulFreq : PWM信号频率，单位Hz (实际测试，可以输出100MHz），0 表示禁止输出
-*              _ulDutyCycle : PWM信号占空比，单位: 万分之一。如5000，表示50.00%的占空比
-*    返 回 值: 无
-*********************************************************************************************************
-*/
+/**
+ * @brief  配置 TIM 通道输出 PWM（占空比 0 → GPIO=0，10000 → GPIO=1，其余用 TIM PWM）
+ * @param  GPIOx         GPIO 端口
+ * @param  GPIO_Pin      GPIO 引脚
+ * @param  TIMx          目标定时器（TIM1–TIM17）
+ * @param  _ucChannel    TIM 通道（1–6）
+ * @param  _ulFreq       PWM 频率（Hz），0 表示禁止输出
+ * @param  _ulDutyCycle  占空比（万分之一，0–10000），5000 = 50.00%
+ * @retval 无
+ */
 void bsp_SetTIMOutPWM(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin, TIM_TypeDef *TIMx, uint8_t _ucChannel,
                       uint32_t _ulFreq, uint32_t _ulDutyCycle)
 {
@@ -441,17 +401,14 @@ void bsp_SetTIMOutPWM(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin, TIM_TypeDef *TIMx,
     }
 }
 
-/*
-*********************************************************************************************************
-*    函 数 名: bsp_SetTIMforInt
-*    功能说明: 配置TIM和NVIC，用于简单的定时中断，开启定时中断。另外注意中断服务程序需要由用户应用程序实现。
-*    形    参: TIMx : 定时器
-*              _ulFreq : 定时频率 （Hz）。 0 表示关闭。
-*              _PreemptionPriority : 抢占优先级
-*              _SubPriority : 子优先级
-*    返 回 值: 无
-*********************************************************************************************************
-*/
+/**
+ * @brief  配置 TIM 为定时中断模式并启动（ISR 需由用户实现）
+ * @param  TIMx                 目标定时器
+ * @param  _ulFreq              中断频率（Hz），0 表示关闭
+ * @param  _PreemptionPriority  NVIC 抢占优先级
+ * @param  _SubPriority         NVIC 子优先级
+ * @retval 无
+ */
 void bsp_SetTIMforInt(TIM_TypeDef *TIMx, uint32_t _ulFreq, uint8_t _PreemptionPriority, uint8_t _SubPriority)
 {
     TIM_HandleTypeDef TimHandle = {0};
@@ -572,4 +529,4 @@ void bsp_SetTIMforInt(TIM_TypeDef *TIMx, uint32_t _ulFreq, uint8_t _PreemptionPr
     HAL_TIM_Base_Start(&TimHandle);
 }
 
-/***************************** 安富莱电子 www.armfly.com (END OF FILE) *********************************/
+/* end of file */

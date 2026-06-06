@@ -1,19 +1,7 @@
-/*
-*********************************************************************************************************
-*
-*    模块名称 : BSP模块(For STM32H7)
-*    文件名称 : bsp.h
-*    版    本 : V1.0
-*    说    明 : 这是硬件底层驱动程序的主文件。每个c文件可以 #include "bsp.h" 来包含所有的外设驱动模块。
-*               bsp = Borad surport packet 板级支持包
-*    修改记录 :
-*        版本号  日期         作者       说明
-*        V1.0    2018-07-29  Eric2013   正式发布
-*
-*    Copyright (C), 2018-2030, 安富莱电子 www.armfly.com
-*
-*********************************************************************************************************
-*/
+/**
+ * @file    bsp.h
+ * @brief   板级支持包（BSP）主头文件，包含所有外设驱动模块
+ */
 #ifndef _BSP_H_
 #define _BSP_H_
 
@@ -161,68 +149,19 @@ typedef enum
 #include "timer_port.h"
 #include "utils_lib.h"
 
-/* 通过取消注释或者添加注释的方式控制是否包含底层驱动模块 */
+/* 底层驱动模块（当前工程已启用） */
 #include "bsp_dma.h"
-// #include "bsp_msg.h"
 #include "bsp_user_lib.h"
-// #include "bsp_timer.h"
 #include "bsp_led.h"
 #include "bsp_key.h"
-// #include "bsp_dwt.h"
-
-// #include "bsp_cpu_rtc.h"
-// #include "bsp_cpu_adc.h"
-// #include "bsp_cpu_dac.h"
 #include "bsp_uart.h"
-// #include "bsp_uart_gps.h"
-// #include "bsp_uart_esp8266.h"
-// #include "bsp_uart_sim800.h"
-
-// #include "bsp_spi_bus.h"
-// #include "bsp_spi_ad9833.h"
-// #include "bsp_spi_ads1256.h"
-// #include "bsp_spi_dac8501.h"
-// #include "bsp_spi_dac8562.h"
-// #include "bsp_spi_flash.h"
-// #include "bsp_spi_tm7705.h"
-// #include "bsp_spi_vs1053b.h"
-
 #include "bsp_qspi.h"
-
-// #include "bsp_fmc_sdram.h"
-// #include "bsp_fmc_nand_flash.h"
-// #include "bsp_fmc_ad7606.h"
-// #include "bsp_fmc_oled.h"
+#include "bsp_fmc_sdram.h"
 #include "bsp_fmc_io.h"
-
-// #include "bsp_i2c_gpio.h"
-// #include "bsp_i2c_bh1750.h"
-// #include "bsp_i2c_bmp085.h"
-// #include "bsp_i2c_eeprom_24xx.h"
-// #include "bsp_i2c_hmc5883l.h"
-// #include "bsp_i2c_mpu6050.h"
-// #include "bsp_i2c_si4730.h"
-// #include "bsp_i2c_wm8978.h"
-
 #include "bsp_tft_h7.h"
-// #include "bsp_tft_429.h"
-// #include "bsp_tft_lcd.h"
-// #include "bsp_ts_touch.h"
-// #include "bsp_ts_ft5x06.h"
-// #include "bsp_ts_gt811.h"
-// #include "bsp_ts_gt911.h"
-// #include "bsp_ts_stmpe811.h"
-
 #include "bsp_beep.h"
 #include "bsp_tim_pwm.h"
 #include "bsp_sdio_sd.h"
-// #include "bsp_dht11.h"
-// #include "bsp_ds18b20.h"
-// #include "bsp_ps2.h"
-// #include "bsp_ir_decode.h"
-// #include "bsp_camera.h"
-// #include "bsp_rs485_led.h"
-// #include "bsp_can.h"
 
 /* 提供给其他C文件调用的函数 */
 void bsp_Init(void);
@@ -234,4 +173,4 @@ void bsp_RunPer1ms(void);
 void bsp_RunPer10ms(void);
 
 #endif
-/***************************** 安富莱电子 www.armfly.com (END OF FILE) *********************************/
+/* end of file */

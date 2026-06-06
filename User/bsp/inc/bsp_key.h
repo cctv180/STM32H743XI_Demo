@@ -1,15 +1,7 @@
-/*
-*********************************************************************************************************
-*
-*    模块名称 : 按键驱动模块
-*    文件名称 : bsp_key.h
-*    版    本 : V1.0
-*    说    明 : 头文件
-*
-*    Copyright (C), 2013-2014, 安富莱电子 www.armfly.com
-*
-*********************************************************************************************************
-*/
+/**
+ * @file    bsp_key.h
+ * @brief   独立按键驱动模块头文件
+ */
 
 #ifndef __BSP_KEY_H
 #define __BSP_KEY_H
@@ -36,14 +28,14 @@ typedef enum
 #define KEY_FIFO_SIZE 16
 
 /* 按键值宏 */
-#define KEY_NONE                        255                                             /* 无按键 */
-#define KEY_PRESS_DOWN(key_id)          (key_id * number_of_event + PRESS_DOWN)         /* 按键按下 */
-#define KEY_PRESS_UP(key_id)            (key_id * number_of_event + PRESS_UP)           /* 按键弹起 */
-#define KEY_PRESS_REPEAT(key_id)        (key_id * number_of_event + PRESS_REPEAT)       /* 重复按下触发 */
-#define KEY_SINGLE_CLICK(key_id)        (key_id * number_of_event + SINGLE_CLICK)       /* 单击按键事件 */
-#define KEY_DOUBLE_CLICK(key_id)        (key_id * number_of_event + DOUBLE_CLICK)       /* 双击按键事件 */
-#define KEY_LONG_PRESS_START(key_id)    (key_id * number_of_event + LONG_PRESS_START)   /* 达到长按时间阈值时触发一次 */
-#define KEY_LONG_PRESS_HOLD(key_id)     (key_id * number_of_event + LONG_PRESS_HOLD)    /* 长按期间一直触发 */
+#define KEY_NONE 255                                                               /* 无按键 */
+#define KEY_PRESS_DOWN(key_id) (key_id * number_of_event + PRESS_DOWN)             /* 按键按下 */
+#define KEY_PRESS_UP(key_id) (key_id * number_of_event + PRESS_UP)                 /* 按键弹起 */
+#define KEY_PRESS_REPEAT(key_id) (key_id * number_of_event + PRESS_REPEAT)         /* 重复按下触发 */
+#define KEY_SINGLE_CLICK(key_id) (key_id * number_of_event + SINGLE_CLICK)         /* 单击按键事件 */
+#define KEY_DOUBLE_CLICK(key_id) (key_id * number_of_event + DOUBLE_CLICK)         /* 双击按键事件 */
+#define KEY_LONG_PRESS_START(key_id) (key_id * number_of_event + LONG_PRESS_START) /* 达到长按时间阈值时触发一次 */
+#define KEY_LONG_PRESS_HOLD(key_id) (key_id * number_of_event + LONG_PRESS_HOLD)   /* 长按期间一直触发 */
 
 /* 供外部调用的函数声明 */
 void bsp_InitKey(void);
@@ -55,4 +47,4 @@ void bsp_KeyScan5ms(void);
 
 #endif
 
-/***************************** 安富莱电子 www.armfly.com (END OF FILE) *********************************/
+/* end of file */

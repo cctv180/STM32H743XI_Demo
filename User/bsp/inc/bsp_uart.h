@@ -263,19 +263,19 @@ extern "C"
      * @brief 串口设备运行时上下文.
      *
      *  - tx_kfifo / rx_kfifo : DMA 直接读写的 ring buffer.
-     *  - SendBefor / SendOver: TX 钩子 (典型用于 RS485 收发方向切换).
-     *  - ReciveNew           : RX 钩子, 每次 idle-line 事件后回调, 参数为本次新收字节数.
+     *  - SendBefore / SendOver: TX 钩子 (典型用于 RS485 收发方向切换).
+     *  - ReceiveNew           : RX 钩子, 每次 idle-line 事件后回调, 参数为本次新收字节数.
      *  - Sending             : 当前是否有 TX DMA 正在进行 (volatile, 跨 ISR/线程).
      */
     typedef struct
     {
-        UART_HandleTypeDef *huart;         /*!< 关联的 HAL UART handle 指针 */
-        void (*SendBefor)(void);           /*!< 发送前回调, 可选 */
-        void (*SendOver)(void);            /*!< 发送完成回调, 可选 */
-        void (*ReciveNew)(uint8_t length); /*!< 收到新数据后回调, 可选 */
-        RINGBUFF_T tx_kfifo;               /*!< 发送 ring buffer */
-        RINGBUFF_T rx_kfifo;               /*!< 接收 ring buffer */
-        volatile uint8_t Sending;          /*!< TX DMA 是否在传输中 (1=忙, 0=空闲) */
+        UART_HandleTypeDef *huart;          /*!< 关联的 HAL UART handle 指针 */
+        void (*SendBefore)(void);           /*!< 发送前回调, 可选 */
+        void (*SendOver)(void);             /*!< 发送完成回调, 可选 */
+        void (*ReceiveNew)(uint8_t length); /*!< 收到新数据后回调, 可选 */
+        RINGBUFF_T tx_kfifo;                /*!< 发送 ring buffer */
+        RINGBUFF_T rx_kfifo;                /*!< 接收 ring buffer */
+        volatile uint8_t Sending;           /*!< TX DMA 是否在传输中 (1=忙, 0=空闲) */
     } UART_T;
 
     /* -------------------------------- 公共 API -------------------------------- */

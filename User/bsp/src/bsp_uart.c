@@ -54,9 +54,9 @@ static void uart_basic_init(UART_HandleTypeDef *huart, USART_TypeDef *instance, 
 static void uart_kickoff_tx(UART_T *p);
 
 static void RS485_InitTXE(void);
-static void RS485_SendBefor(void);
+static void RS485_SendBefore(void);
 static void RS485_SendOver(void);
-static void RS485_ReciveNew(uint8_t byte);
+static void RS485_ReceiveNew(uint8_t byte);
 
 /* ========================================================================== */
 /*                          Per-port state allocations                         */
@@ -560,9 +560,9 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
     }
     p->rx_kfifo.write_index = index_new;
 
-    if (p->ReciveNew)
+    if (p->ReceiveNew)
     {
-        p->ReciveNew((uint8_t)length);
+        p->ReceiveNew((uint8_t)length);
     }
 }
 
@@ -727,9 +727,9 @@ uint16_t comSendBuf(COM_PORT_E port, const uint8_t *buf, uint16_t len)
         return 0U;
     }
 
-    if (p->SendBefor)
+    if (p->SendBefore)
     {
-        p->SendBefor(); /* 例: RS485 切到发送 */
+        p->SendBefore(); /* 例: RS485 切到发送 */
     }
     return uart_send(p, buf, len);
 }
@@ -970,9 +970,9 @@ static void RS485_InitTXE(void)
 
 void RS485_SetBaud(uint32_t baud) { (void)comSetBaud(COM3, baud); }
 
-static void RS485_SendBefor(void) { RS485_TX_EN(); }
+static void RS485_SendBefore(void) { RS485_TX_EN(); }
 static void RS485_SendOver(void) { RS485_RX_EN(); }
-static void RS485_ReciveNew(uint8_t byte)
+static void RS485_ReceiveNew(uint8_t byte)
 {
     (void)byte; /* 留给 MODBUS / 上层协议挂接 */
 }
@@ -1007,9 +1007,9 @@ static void uart_port_setup(UART_T *p,
                             void (*recv_new)(uint8_t))
 {
     p->huart = huart;
-    p->SendBefor = before;
+    p->SendBefore = before;
     p->SendOver = over;
-    p->ReciveNew = recv_new;
+    p->ReceiveNew = recv_new;
     p->Sending = FALSE;
 
     ringbuffer_init(&p->tx_kfifo, tx_buf, tx_size);
@@ -1048,7 +1048,7 @@ void bsp_InitUart(void)
     uart_port_setup(&s_uart3, &huart3,
                     s_tx_buf3, (uint16_t)UART3_TX_BUF_SIZE,
                     s_rx_buf3, (uint16_t)find_PowerOf2(UART3_RX_BUF_SIZE, 0),
-                    RS485_SendBefor, RS485_SendOver, RS485_ReciveNew);
+                    RS485_SendBefore, RS485_SendOver, RS485_ReceiveNew);
 #endif
 
 #if UART4_FIFO_EN == 1
@@ -1091,7 +1091,7 @@ void bsp_InitUart(void)
     MX_USART8_UART_Init();
     uart_port_setup(&s_uart8, &huart8,
                     s_tx_buf8, (uint16_t)UART8_TX_BUF_SIZE,
-                    s_rx_buf8, (uint16_t)roundup_pow_of_two(UART8_RX_BUF_SIZE),
+                    s_rx_buf8, (uint16_t)find_PowerOf2(UART8_RX_BUF_SIZE, 0),
                     NULL, NULL, NULL);
 #endif
 }

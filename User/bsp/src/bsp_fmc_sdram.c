@@ -1,19 +1,7 @@
-/*
-*********************************************************************************************************
-*
-*    模块名称 : 外部SDRAM驱动模块
-*    文件名称 : bsp_fmc_sdram.c
-*    版    本 : V2.4
-*    说    明 : 安富莱STM32-V7开发板标配的SDRAM型号IS42S32800G-6BLI, 32位带宽, 容量32MB, 6ns速度(166MHz)
-*
-*    修改记录 :
-*        版本号  日期        作者     说明
-*        V1.0    2018-05-04 armfly  正式发布
-*
-*    Copyright (C), 2018-2030, 安富莱电子 www.armfly.com
-*
-*********************************************************************************************************
-*/
+/**
+ * @file    bsp_fmc_sdram.c
+ * @brief   外部 SDRAM 驱动模块（IS42S32800G-6BLI，32-bit 32MB，FMC BANK1 @ 0xC0000000）
+ */
 #include "bsp.h"
 #include "utils_lib.h"
 #include "bsp_fmc_sdram.h"
@@ -286,14 +274,10 @@ void HAL_SDRAM_MspDeInit(SDRAM_HandleTypeDef *hsdram)
 }
 /* ### STM32CubeMX CODE END */
 
-/*
-*********************************************************************************************************
-*    函 数 名: bsp_InitExtSDRAM
-*    功能说明: 配置连接外部SDRAM的GPIO和FMC
-*    形    参: 无
-*    返 回 值: 无
-*********************************************************************************************************
-*/
+/**
+ * @brief  初始化外部 SDRAM（GPIO 复用 + FMC 时序 + SDRAM 初始化序列）
+ * @retval 无
+ */
 void bsp_InitExtSDRAM(void)
 {
     SDRAM_HandleTypeDef hsdram = {0};
@@ -345,15 +329,12 @@ void bsp_InitExtSDRAM(void)
     SDRAM_Initialization_Sequence(&hsdram, &command);
 }
 
-/*
-*********************************************************************************************************
-*    函 数 名: SDRAM初始化序列
-*    功能说明: 完成SDRAM序列初始化
-*    形    参: hsdram: SDRAM句柄
-*              Command: 命令结构体指针
-*    返 回 值: None
-*********************************************************************************************************
-*/
+/**
+ * @brief  发送 SDRAM 初始化命令序列（CLK Enable → Precharge All → 2x Auto-Refresh → Load Mode Register）
+ * @param  hsdram  SDRAM 句柄指针
+ * @param  Command FMC SDRAM 命令结构体指针
+ * @retval 无
+ */
 static void SDRAM_Initialization_Sequence(SDRAM_HandleTypeDef *hsdram, FMC_SDRAM_CommandTypeDef *Command)
 {
     __IO uint32_t tmpmrd = 0;
@@ -413,14 +394,10 @@ static void SDRAM_Initialization_Sequence(SDRAM_HandleTypeDef *hsdram, FMC_SDRAM
     HAL_SDRAM_ProgramRefreshRate(hsdram, SDRAM_REFRESH_COUNT);
 }
 
-/*
-*********************************************************************************************************
-*    函 数 名: bsp_TestExtSDRAM
-*    功能说明: 扫描测试外部SDRAM的全部单元。
-*    形    参: 无
-*    返 回 值: 0 表示测试通过； 大于0表示错误单元的个数。
-*********************************************************************************************************
-*/
+/**
+ * @brief  全量扫描测试外部 SDRAM（32 位写→读→字节写→读）
+ * @retval 0 = 测试通过，>0 = 错误单元数
+ */
 uint32_t bsp_TestExtSDRAM1(void)
 {
     uint32_t i;
@@ -500,14 +477,10 @@ uint32_t bsp_TestExtSDRAM1(void)
     return 0;
 }
 
-/*
-*********************************************************************************************************
-*    函 数 名: bsp_TestExtSDRAM2
-*    功能说明: 扫描测试外部SDRAM，不扫描前面4M字节的显存。
-*    形    参: 无
-*    返 回 值: 0 表示测试通过； 大于0表示错误单元的个数。
-*********************************************************************************************************
-*/
+/**
+ * @brief  扫描测试外部 SDRAM（跳过前 4MB 显存区，仅测试应用数据区）
+ * @retval 0 = 测试通过，>0 = 错误单元数
+ */
 uint32_t bsp_TestExtSDRAM2(void)
 {
     uint32_t i;
@@ -759,4 +732,4 @@ static int _cmd(int argc, char *argv[])
 SHELL_EXPORT_CMD(SHELL_CMD_PERMISSION(0) | SHELL_CMD_TYPE(SHELL_TYPE_CMD_MAIN), sdram, _cmd, sdram[set test read write]);
 #endif // #ifdef DEBUG_MODE
 
-/***************************** 安富莱电子 www.armfly.com (END OF FILE) *********************************/
+/* end of file */

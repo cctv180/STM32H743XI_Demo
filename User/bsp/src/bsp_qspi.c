@@ -1,19 +1,7 @@
-/*
-*********************************************************************************************************
-*
-*    模块名称 : W25Q256 QSPI驱动模块
-*    文件名称 : bsp_qspi_w25q256.c
-*    版    本 : V1.0
-*    说    明 : 使用CPU的QSPI总线驱动串行FLASH，提供基本的读写函数，采用4线方式，MDMA传输
-*
-*    修改记录 :
-*        版本号  日期        作者     说明
-*        V1.0    2020-11-01  armfly  正式发布
-*
-*    Copyright (C), 2020-2030, 安富莱电子 www.armfly.com
-*
-*********************************************************************************************************
-*/
+/**
+ * @file    bsp_qspi.c
+ * @brief   W25Q256JV QSPI Flash 驱动（4 线模式，MDMA 传输）
+ */
 #include "bsp.h"
 #include "bsp_qspi.h"
 
@@ -173,14 +161,10 @@ static inline HAL_StatusTypeDef QSPI_SendCommand(uint32_t _instruction,     /* �
     return HAL_QSPI_Command(&hqspi, &cmd, 5000);
 }
 
-/*
-*********************************************************************************************************
-*    函 数 名: bsp_InitQspi
-*    功能说明: QSPI Flash硬件初始化，配置基本参数
-*    形    参: 无
-*    返 回 值: 无
-*********************************************************************************************************
-*/
+/**
+ * @brief  初始化 QSPI Flash 硬件（100MHz，4 线模式，使能 QE bit）
+ * @retval 无
+ */
 void bsp_InitQspi(void)
 {
     /* 复位QSPI */
@@ -422,14 +406,11 @@ uint8_t QSPI_WriteSR(uint8_t _reg, uint8_t _value)
     return HAL_QSPI_Transmit(&hqspi, &_value, 5000);
 }
 
-/*
-*********************************************************************************************************
-*   函 数 名: QSPI_EraseSector
-*   功能说明: 擦除指定的扇区，扇区大小4KB
-*   形    参: _uiSectorAddr : 扇区地址，以4KB为单位的地址，比如0，4096, 8192等
-*   返 回 值: 无
-*********************************************************************************************************
-*/
+/**
+ * @brief  擦除指定 4KB 扇区
+ * @param  _uiSectorAddr  扇区起始地址（需 4KB 对齐，如 0、4096、8192）
+ * @retval 无
+ */
 void QSPI_EraseSector(uint32_t _uiSectorAddr)
 {
     /* 等待Flash处于空闲状态 */
@@ -451,14 +432,10 @@ void QSPI_EraseSector(uint32_t _uiSectorAddr)
     }
 }
 
-/*
-*********************************************************************************************************
-*   函 数 名: QSPI_EraseChip
-*   功能说明: 整个芯片擦除
-*   形    参: 无
-*   返 回 值: 无
-*********************************************************************************************************
-*/
+/**
+ * @brief  整片擦除 Flash
+ * @retval 无
+ */
 void QSPI_EraseChip(void)
 {
     /* 等待Flash处于空闲状态 */
@@ -480,16 +457,13 @@ void QSPI_EraseChip(void)
     }
 }
 
-/*
-*********************************************************************************************************
-*   函 数 名: QSPI_ReadBuffer
-*   功能说明: 连续读取若干字节，字节个数不能超出芯片容量。
-*   形    参: _pBuf : 数据源缓冲区。
-*             _uiReadAddr ：起始地址。
-*             _usSize ：数据个数, 可以大于PAGE_SIZE, 但是不能超出芯片总容量。
-*   返 回 值: 无
-*********************************************************************************************************
-*/
+/**
+ * @brief  连续读取 Flash 数据（MDMA）
+ * @param  _pBuf        目标数据缓冲区
+ * @param  _uiReadAddr  起始地址
+ * @param  _uiSize      读取字节数（不超过芯片容量）
+ * @retval 无
+ */
 void QSPI_ReadBuffer(uint8_t *_pBuf, uint32_t _uiReadAddr, uint32_t _uiSize)
 {
     QSPI_CommandTypeDef cmd = {0};
@@ -525,16 +499,13 @@ void QSPI_ReadBuffer(uint8_t *_pBuf, uint32_t _uiReadAddr, uint32_t _uiSize)
     }
 }
 
-/*
-*********************************************************************************************************
-*   函 数 名: QSPI_WriteBuffer
-*   功能说明: 页编程，页大小256字节，任意页都可以写入
-*   形    参: _pBuf : 数据源缓冲区；
-*             _uiWriteAddr ：目标区域首地址，即页首地址，比如0， 256, 512等。
-*             _uiSize ：数据个数，不能超过页面大小，范围1 - 256。
-*   返 回 值: 1:成功， 0：失败
-*********************************************************************************************************
-*/
+/**
+ * @brief  页编程（256 字节/页，跨页须调用方自行拆分）
+ * @param  _pBuf        数据源缓冲区
+ * @param  _uiWriteAddr 目标页首地址（如 0、256、512）
+ * @param  _uiSize      写入字节数（1–256）
+ * @retval 无
+ */
 void QSPI_WriteBuffer(uint8_t *_pBuf, uint32_t _uiWriteAddr, uint16_t _uiSize)
 {
     /* 等待Flash处于空闲状态 */
@@ -561,14 +532,10 @@ void QSPI_WriteBuffer(uint8_t *_pBuf, uint32_t _uiWriteAddr, uint16_t _uiSize)
     }
 }
 
-/*
-*********************************************************************************************************
-*    函 数 名: QSPI_MemoryMapped
-*    功能说明: QSPI内存映射，地址 0x90000000
-*    形    参: 无
-*    返 回 值: 无
-*********************************************************************************************************
-*/
+/**
+ * @brief  使能 QSPI 内存映射模式（XIP，映射地址 0x90000000）
+ * @retval 无
+ */
 void QSPI_MemoryMapped(void)
 {
     QSPI_CommandTypeDef cmd = {0};
@@ -815,4 +782,4 @@ static int cmd_qspi(int argc, char *argv[])
 SHELL_EXPORT_CMD(SHELL_CMD_PERMISSION(0) | SHELL_CMD_TYPE(SHELL_TYPE_CMD_MAIN), qspi, cmd_qspi, qspi[probe read write erase]);
 #endif // #ifdef DEBUG_MODE
 
-/***************************** 安富莱电子 www.armfly.com (END OF FILE) *********************************/
+/* end of file */
