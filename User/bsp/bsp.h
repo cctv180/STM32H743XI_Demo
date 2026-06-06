@@ -151,7 +151,6 @@ typedef enum
 
 /* 底层驱动模块（当前工程已启用） */
 #include "bsp_dma.h"
-#include "bsp_user_lib.h"
 #include "bsp_led.h"
 #include "bsp_key.h"
 #include "bsp_uart.h"

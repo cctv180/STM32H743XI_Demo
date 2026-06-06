@@ -61,7 +61,7 @@
 | 模块 | 主要文件 | 说明 |
 |------|----------|------|
 | 核心 | `bsp.h`、`bsp.c` | 总入口、`System_Init` / `bsp_Init`、`bsp_Idle`、时钟与错误处理等 |
-| 通用工具 | `bsp_user_lib.h`、`bsp_user_lib.c` | 板级通用小工具函数 |
+| 通用工具 | `OpenLib/utils_lib/utils_lib.h`、`utils_lib.c` | `dump_hex`、`mem_fill`、`find_PowerOf2` 等 |
 | SDRAM | `bsp_fmc_sdram.h`、`bsp_fmc_sdram.c` | FMC 外部 SDRAM 初始化与使用 |
 | FMC 扩展 IO | `bsp_fmc_io.h`、`bsp_fmc_io.c` | FMC 总线扩展数字 IO（如 74HC574），驱动 LED 位选等前需先初始化 |
 | QSPI | `bsp_qspi.h`、`bsp_qspi.c` | QSPI 外设与外部 Flash 访问 |
