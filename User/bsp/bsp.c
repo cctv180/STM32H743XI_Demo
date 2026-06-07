@@ -195,80 +195,226 @@ void Error_Handler(char *file, uint32_t line)
 }
 
 /**
- * @brief  配置 MPU：AXI SRAM Write-Back 缓存，FMC 扩展 IO Device 不可缓存
+ * @brief  配置 MPU（Memory Protection Unit，内存保护单元）
+ *
+ * ---------------------------------------------------------------------------
+ * 【MPU 是什么？为什么要配？】
+ *
+ * STM32H7 的 Cortex-M7 内核开启了 D-Cache 后，CPU 读写内存会经过 Cache，
+ * 而 DMA、LTDC、以太网 MAC 等外设直接访问物理内存（SRAM / SDRAM / 寄存器），
+ * 不经过 Cache。若不对某段地址声明正确的“内存属性”，就会出现：
+ *   - CPU 写了数据，外设读到的还是旧值（Cache 里没刷回内存）
+ *   - 外设写了数据，CPU 读到的还是旧值（Cache 里仍是脏数据）
+ *   - 对 FMC 寄存器做 Cache 写回，总线上出现重复片选/写使能，硬件异常
+ *
+ * MPU 的作用：把地址空间切成若干 Region（本芯片最多 8 个），为每段地址
+ * 指定访问权限和 Cache 策略，让 CPU 与外设对同一块内存的行为一致。
+ *
+ * 本函数在 System_Init() 里、开启 D-Cache 之前调用（见 CPU_CACHE_Enable）。
+ *
+ * ---------------------------------------------------------------------------
+ * 【Region 结构体各字段含义（HAL 封装）】
+ *
+ *   BaseAddress      区域起始地址（必须按 Size 对齐，例如 4MB 区须 4MB 对齐）
+ *   Size             区域大小，只能是 2 的幂（32B ~ 4GB）
+ *   AccessPermission 读/写权限（本工程全部 MPU_REGION_FULL_ACCESS）
+ *   IsCacheable      是否可缓存（1=可进 D-Cache）
+ *   IsBufferable     是否写缓冲（Write-Back 时常配合使用）
+ *   TypeExtField     TEX 位，与 C/B 组合决定内存类型（见下表）
+ *   IsShareable      多核共享属性（M7 单核一般 NOT_SHAREABLE）
+ *   DisableExec      是否禁止在该区域取指执行（显存通常禁执行）
+ *   SubRegionDisable 把区域均分 8 段，按位关闭子区域（本工程未用）
+ *   Number           使用 MPU 硬件槽位编号 0~7
+ *
+ * ---------------------------------------------------------------------------
+ * 【Cortex-M7 常用内存属性组合（TEX=0 时）】
+ *
+ *   C=0, B=0  →  Normal，不可缓存          → 外设寄存器映射、FMC IO、NAND
+ *   C=1, B=0  →  Normal，Write-Through      → 写穿：写操作同时更新 Cache 和内存
+ *   C=1, B=1  →  Normal，Write-Back         → 写回：只更新 Cache，需手动 Clean
+ *   C=0, B=1  →  Device                     → 严格顺序的设备内存（ETH 描述符）
+ *
+ * Write-Through：性能略低于 Write-Back，但 CPU 写入后内存中立即可见，适合
+ * 与 DMA/LTDC 共享的缓冲区。Write-Back 最快，但 DMA 前后必须调用
+ * SCB_CleanDCache_by_Addr / SCB_InvalidateDCache_by_Addr（本工程 SD/UART 已做）。
+ *
+ * ---------------------------------------------------------------------------
+ * 【本板 Region 分配一览】
+ *
+ *   Region 0  0x30040000  256B   Device，不可缓存     ETH DMA 描述符（预留给 LwIP）
+ *   Region 1  0x30044000  16KB   Write-Through        LwIP 协议栈堆内存
+ *   Region 2  0x24000000  512KB  Write-Through        片内 AXI SRAM（主 RAM）
+ *   Region 3  0x60000000  64KB   不可缓存             FMC 扩展 IO（74HC574）
+ *   Region 4  0xC0000000  32MB   Write-Through        外部 SDRAM 全片（显存 + 应用区）
+ *   Region 5  0x80000000  512MB  不可缓存             FMC NAND Flash
+ *
+ * 注：Region 4 覆盖整片 32MB SDRAM。若不显式划区，0xC0000000 在 Cortex-M7 默认
+ * 内存图中属于 Device 类型，会导致非对齐访问 fault 且无法缓存（速度慢）。统一配为
+ * Normal/Write-Through 后，显存与应用区行为一致，可正常做堆、大缓冲、LVGL 缓冲等。
+ *
  * @retval 无
  */
 static void MPU_Config(void)
 {
     MPU_Region_InitTypeDef MPU_InitStruct;
 
-    /* 禁止 MPU */
+    /* 配置前必须先关闭 MPU，否则无法修改 Region 寄存器 */
     HAL_MPU_Disable();
 
-    /* 最高性能，读Cache和写Cache都开启 */
-#if 1
-    /* 配置AXI SRAM的MPU属性为Write back, Read allocate，Write allocate */
+#if 1 /* 以太网 + LwIP 尚未启用时可改为 0，释放 Region 0/1 */
+    /*
+     * Region 0：以太网 DMA 描述符（位于 D2 域 AXI SRAM）
+     * -----------------------------------------------------------------------
+     * 地址 0x30040000 是 ST 以太网驱动存放 RX/TX 描述符链表的固定位置。
+     * 描述符由 ETH MAC 硬件直接读写，必须设为 Device、不可缓存；
+     * 若设为 Cacheable，CPU 修改的描述符可能只留在 Cache，MAC 看不到更新。
+     */
     MPU_InitStruct.Enable = MPU_REGION_ENABLE;
-    MPU_InitStruct.BaseAddress = 0x24000000;
-    MPU_InitStruct.Size = MPU_REGION_SIZE_512KB;
+    MPU_InitStruct.BaseAddress = 0x30040000;
+    MPU_InitStruct.Size = MPU_REGION_SIZE_256B;
     MPU_InitStruct.AccessPermission = MPU_REGION_FULL_ACCESS;
     MPU_InitStruct.IsBufferable = MPU_ACCESS_BUFFERABLE;
-    MPU_InitStruct.IsCacheable = MPU_ACCESS_CACHEABLE;
-    MPU_InitStruct.IsShareable = MPU_ACCESS_NOT_SHAREABLE;
-    MPU_InitStruct.Number = MPU_REGION_NUMBER0;
-    MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL1;
-    MPU_InitStruct.SubRegionDisable = 0x00;
-    MPU_InitStruct.DisableExec = MPU_INSTRUCTION_ACCESS_ENABLE;
-
-    HAL_MPU_ConfigRegion(&MPU_InitStruct);
-
-    /* 最低性能，读Cache和写Cache都关闭 */
-#else
-    /* 配置AXI SRAM的MPU属性为NORMAL, NO Read allocate，NO Write allocate */
-    MPU_InitStruct.Enable = MPU_REGION_ENABLE;
-    MPU_InitStruct.BaseAddress = 0x24000000;
-    MPU_InitStruct.Size = MPU_REGION_SIZE_512KB;
-    MPU_InitStruct.AccessPermission = MPU_REGION_FULL_ACCESS;
-    MPU_InitStruct.IsBufferable = MPU_ACCESS_NOT_BUFFERABLE;
     MPU_InitStruct.IsCacheable = MPU_ACCESS_NOT_CACHEABLE;
     MPU_InitStruct.IsShareable = MPU_ACCESS_NOT_SHAREABLE;
     MPU_InitStruct.Number = MPU_REGION_NUMBER0;
-    MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL1;
+    MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL0;
     MPU_InitStruct.SubRegionDisable = 0x00;
     MPU_InitStruct.DisableExec = MPU_INSTRUCTION_ACCESS_ENABLE;
-
     HAL_MPU_ConfigRegion(&MPU_InitStruct);
-#endif
 
-    /* 配置FMC扩展IO的MPU属性为Device或者Strongly Ordered */
+    /*
+     * Region 1：LwIP 堆内存（0x30044000，16KB）
+     * -----------------------------------------------------------------------
+     * LwIP 的 pbuf / 发送缓冲区放在 D2 SRAM。以太网 DMA 会读取这里的 Tx 数据，
+     * 使用 Write-Through：CPU 写入后数据立即落到物理 RAM，DMA 能直接读到。
+     */
     MPU_InitStruct.Enable = MPU_REGION_ENABLE;
-    MPU_InitStruct.BaseAddress = 0x60000000;
-    MPU_InitStruct.Size = ARM_MPU_REGION_SIZE_64KB;
+    MPU_InitStruct.BaseAddress = 0x30044000;
+    MPU_InitStruct.Size = MPU_REGION_SIZE_16KB;
     MPU_InitStruct.AccessPermission = MPU_REGION_FULL_ACCESS;
-    MPU_InitStruct.IsBufferable = MPU_ACCESS_BUFFERABLE;
-    MPU_InitStruct.IsCacheable = MPU_ACCESS_NOT_CACHEABLE; /* 不能用MPU_ACCESS_CACHEABLE;会出现2次CS、WE信号 */
+    MPU_InitStruct.IsBufferable = MPU_ACCESS_NOT_BUFFERABLE;
+    MPU_InitStruct.IsCacheable = MPU_ACCESS_CACHEABLE;
     MPU_InitStruct.IsShareable = MPU_ACCESS_NOT_SHAREABLE;
     MPU_InitStruct.Number = MPU_REGION_NUMBER1;
     MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL0;
     MPU_InitStruct.SubRegionDisable = 0x00;
     MPU_InitStruct.DisableExec = MPU_INSTRUCTION_ACCESS_ENABLE;
+    HAL_MPU_ConfigRegion(&MPU_InitStruct);
+#endif
 
+    /*
+     * Region 2：片内 AXI SRAM（0x24000000，512KB）
+     * -----------------------------------------------------------------------
+     * H7 的主 SRAM，存放栈、堆、全局变量、DMA 缓冲区（如 UART kfifo）等。
+     * 使用 Write-Through 而非 Write-Back：兼顾访问速度与 DMA 一致性，
+     * 减少每次 DMA 传输前手动 Clean Cache 的次数。
+     */
+    MPU_InitStruct.Enable = MPU_REGION_ENABLE;
+    MPU_InitStruct.BaseAddress = 0x24000000;
+    MPU_InitStruct.Size = MPU_REGION_SIZE_512KB;
+    MPU_InitStruct.AccessPermission = MPU_REGION_FULL_ACCESS;
+    MPU_InitStruct.IsBufferable = MPU_ACCESS_NOT_BUFFERABLE;
+    MPU_InitStruct.IsCacheable = MPU_ACCESS_CACHEABLE;
+    MPU_InitStruct.IsShareable = MPU_ACCESS_NOT_SHAREABLE;
+    MPU_InitStruct.Number = MPU_REGION_NUMBER2;
+    MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL0;
+    MPU_InitStruct.SubRegionDisable = 0x00;
+    MPU_InitStruct.DisableExec = MPU_INSTRUCTION_ACCESS_ENABLE;
     HAL_MPU_ConfigRegion(&MPU_InitStruct);
 
-    /*使能 MPU */
+    /*
+     * Region 3：FMC 总线扩展 IO（0x60000000 起，64KB）
+     * -----------------------------------------------------------------------
+     * 74HC574 等扩展芯片映射在 FMC 地址空间（实际访问地址如 0x68200000
+     * 落在此 64KB 覆盖范围内）。这是“内存映射 IO”，每次写操作必须直接
+     * 到达芯片，绝不能 Cache：
+     *   - 若 Cacheable，写操作可能被合并或延迟写回
+     *   - 会出现 2 次片选 CS / 写使能 WE，导致 IO 锁存器状态错乱
+     */
+    MPU_InitStruct.Enable = MPU_REGION_ENABLE;
+    MPU_InitStruct.BaseAddress = 0x60000000;
+    MPU_InitStruct.Size = MPU_REGION_SIZE_64KB;
+    MPU_InitStruct.AccessPermission = MPU_REGION_FULL_ACCESS;
+    MPU_InitStruct.IsBufferable = MPU_ACCESS_NOT_BUFFERABLE;
+    MPU_InitStruct.IsCacheable = MPU_ACCESS_NOT_CACHEABLE;
+    MPU_InitStruct.IsShareable = MPU_ACCESS_NOT_SHAREABLE;
+    MPU_InitStruct.Number = MPU_REGION_NUMBER3;
+    MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL0;
+    MPU_InitStruct.SubRegionDisable = 0x00;
+    MPU_InitStruct.DisableExec = MPU_INSTRUCTION_ACCESS_ENABLE;
+    HAL_MPU_ConfigRegion(&MPU_InitStruct);
+
+    /*
+     * Region 4：外部 SDRAM 全片（EXT_SDRAM_ADDR = 0xC0000000，32MB）
+     * -----------------------------------------------------------------------
+     * 覆盖整片 SDRAM，包含两部分（地址见 bsp_fmc_sdram.h）：
+     *   显存区：0xC0000000 起 4MB —— LTDC 帧缓冲（Layer0 / Layer1 各 2MB）
+     *   应用区：0xC0400000 起 28MB —— 堆、大数据缓冲、LVGL 缓冲等
+     *
+     * 设为 Normal + Write-Through + Cacheable：
+     *   1) CPU 写入立即同步到 SDRAM，LTDC 刷新时能读到最新像素（显存一致性）；
+     *   2) 应用区作为 Normal 内存，允许非对齐访问、可缓存，读写性能高
+     *      （若不划区，默认是 Device 内存：非对齐访问会 fault 且不可缓存）。
+     * DisableExec = DISABLE：SDRAM 仅存数据，禁止在此取指执行。
+     *
+     * 注意：若后续启用 DMA2D 回读显存或外设直接改写 SDRAM，CPU 侧读取前需
+     *       SCB_InvalidateDCache_by_Addr() 使对应缓存行失效。
+     */
+    MPU_InitStruct.Enable = MPU_REGION_ENABLE;
+    MPU_InitStruct.BaseAddress = EXT_SDRAM_ADDR;
+    MPU_InitStruct.Size = MPU_REGION_SIZE_32MB;
+    MPU_InitStruct.AccessPermission = MPU_REGION_FULL_ACCESS;
+    MPU_InitStruct.IsBufferable = MPU_ACCESS_NOT_BUFFERABLE;
+    MPU_InitStruct.IsCacheable = MPU_ACCESS_CACHEABLE;
+    MPU_InitStruct.IsShareable = MPU_ACCESS_NOT_SHAREABLE;
+    MPU_InitStruct.Number = MPU_REGION_NUMBER4;
+    MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL0;
+    MPU_InitStruct.SubRegionDisable = 0x00;
+    MPU_InitStruct.DisableExec = MPU_INSTRUCTION_ACCESS_DISABLE;
+    HAL_MPU_ConfigRegion(&MPU_InitStruct);
+
+    /*
+     * Region 5：FMC NAND Flash（0x80000000，512MB）
+     * -----------------------------------------------------------------------
+     * 板上 NAND 挂在 FMC NAND 控制器，整片地址空间映射在此。
+     * NAND 有命令/地址/数据多阶段访问时序，必须不可缓存，否则 CPU 读到的
+     * 可能是 Cache 中的旧缓存行，而非芯片当前输出数据。
+     */
+    MPU_InitStruct.Enable = MPU_REGION_ENABLE;
+    MPU_InitStruct.BaseAddress = 0x80000000;
+    MPU_InitStruct.Size = MPU_REGION_SIZE_512MB;
+    MPU_InitStruct.AccessPermission = MPU_REGION_FULL_ACCESS;
+    MPU_InitStruct.IsBufferable = MPU_ACCESS_NOT_BUFFERABLE;
+    MPU_InitStruct.IsCacheable = MPU_ACCESS_NOT_CACHEABLE;
+    MPU_InitStruct.IsShareable = MPU_ACCESS_NOT_SHAREABLE;
+    MPU_InitStruct.Number = MPU_REGION_NUMBER5;
+    MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL0;
+    MPU_InitStruct.SubRegionDisable = 0x00;
+    MPU_InitStruct.DisableExec = MPU_INSTRUCTION_ACCESS_ENABLE;
+    HAL_MPU_ConfigRegion(&MPU_InitStruct);
+
+    /*
+     * 使能 MPU，并打开“特权模式默认背景映射”：
+     * 未被上述 Region 覆盖的地址仍按芯片默认内存属性访问（例如 SDRAM 应用区
+     * 0xC0400000 之后的 28MB）。若完全关闭默认映射，未配置区域访问会 fault。
+     */
     HAL_MPU_Enable(MPU_PRIVILEGED_DEFAULT);
 }
 
 /**
  * @brief  使能 Cortex-M7 L1 I-Cache 与 D-Cache
+ * @note   调用顺序（在 System_Init 中）必须是：
+ *           1. MPU_Config()      — 先划定各段内存的 Cache 策略
+ *           2. CPU_CACHE_Enable() — 再打开 Cache，之后所有读写才按 MPU 规则走
+ *         若顺序颠倒，在 MPU 生效前就可能产生错误的 Cache 行，导致难以排查的故障。
  * @retval 无
  */
 static void CPU_CACHE_Enable(void)
 {
-    /* 使能 I-Cache */
+    /* I-Cache：加速 CPU 取指，与 MPU Region 的 DisableExec 配合可保护数据区 */
     SCB_EnableICache();
 
-    /* 使能 D-Cache */
+    /* D-Cache：加速数据读写；开启后外设共享内存必须依赖 MPU 或手动 Cache 维护 */
     SCB_EnableDCache();
 }
 
