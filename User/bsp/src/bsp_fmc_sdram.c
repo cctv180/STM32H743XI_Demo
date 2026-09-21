@@ -562,7 +562,7 @@ uint32_t bsp_TestExtSDRAM2(void)
     return 0;
 }
 
-#if defined(__SHELL_H__) && defined(DEBUG_MODE)
+#if defined(__SHELL_H__) && DEBUG_MODE == 1
 static int _cmd(int argc, char *argv[])
 {
     const char *help_info[] = {

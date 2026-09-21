@@ -80,7 +80,7 @@ void BEEP_Start(uint16_t _usBeepTime, uint16_t _usStopTime, uint16_t _usCycle)
     BEEP_ENABLE(); /* 开始发声 */
 }
 
-#if defined(__SHELL_H__) && defined(DEBUG_MODE)
+#if defined(__SHELL_H__) && DEBUG_MODE == 1
 // 导出到命令列表里
 SHELL_EXPORT_CMD(SHELL_CMD_PERMISSION(0) | SHELL_CMD_TYPE(SHELL_TYPE_CMD_FUNC), beep, BEEP_Start, beep t0 t1 cycle);
 #endif // ifdef DEBUG_MODE

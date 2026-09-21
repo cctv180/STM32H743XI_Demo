@@ -61,7 +61,7 @@ typedef enum
 * 以下宏自动处理与提示
 *********************************************************************************************************
 */
-#ifdef DEBUG_MODE
+#if DEBUG_MODE == 1
 // #define BSP_Printf(...) bsp_log_debug(__FILE__, __LINE__, __VA_ARGS__)
 #define BSP_Printf(...)                                 \
     do                                                  \

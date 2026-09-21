@@ -14,35 +14,16 @@
 
 /* 1. 创建shell对象，开辟shell缓冲区 */
 Shell shell;
-char shellBuffer[512];
+/* 缓冲区被 shellInit 按 SHELL_HISTORY_MAX_NUMBER+1 等分，单条命令上限为 size/6 */
+static char shellBuffer[512];
 
-#if defined(__SHELL_H__) && defined(DEBUG_MODE)
+#if defined(__SHELL_H__) && DEBUG_MODE == 1
 // shell导出到命令列表里
 //                       权限设置                                命令类型            命令名称      命令实体      命令说明
 // SHELL_EXPORT_CMD(SHELL_CMD_PERMISSION(0) | SHELL_CMD_TYPE(SHELL_TYPE_CMD_FUNC), ef_print_env, ef_print_env, ef print env);
 
-int test2(int i1, int i2, int i3, int i4, int i5, int i6, int i7, int i8)
-{
-    printf("input int: %d, %d, %d, %d, %d, %d, %d, %d\r\n", i1, i2, i3, i4, i5, i6, i7, i8);
-    return 0;
-}
-// 导出到命令列表里
-SHELL_EXPORT_CMD(SHELL_CMD_PERMISSION(0) | SHELL_CMD_TYPE(SHELL_TYPE_CMD_FUNC), test2, test2, test2);
-
-/* SHELL_USING_CMD_EXPORT == 1需要把这个打开 */
-int testfunc(int argc, char *agrv[])
-{
-    printf("%dparameter(s)\r\n", argc);
-    for (char i = 1; i < argc; i++)
-    {
-        printf("%s\r\n", agrv[i]);
-    }
-    return 0;
-}
-SHELL_EXPORT_CMD(SHELL_CMD_PERMISSION(0) | SHELL_CMD_TYPE(SHELL_TYPE_CMD_MAIN), testfunc, testfunc, testfunc);
-
 /* 系统信息 */
-int sys_info(int argc, char *agrv[])
+static int sys_info(int argc, char *agrv[])
 {
     uint32_t temp;
     temp = HAL_GetDEVID();
@@ -71,23 +52,10 @@ int sys_info(int argc, char *agrv[])
     return 0;
 }
 SHELL_EXPORT_CMD(SHELL_CMD_PERMISSION(0) | SHELL_CMD_TYPE(SHELL_TYPE_CMD_MAIN) | SHELL_CMD_DISABLE_RETURN, sys_info, sys_info, sys info);
-
-/* 生成随机数 */
-// int rand(int argc, char* agrv[])
-//{
-//     extern RNG_HandleTypeDef hrng;
-//     uint32_t temp;
-//
-//     temp = HAL_RNG_GetRandomNumber(&hrng);
-//     printf("Randon Number = 0x%08x\r\n", temp);
-//     return 0;
-// }
-// SHELL_EXPORT_CMD(SHELL_CMD_PERMISSION(0) | SHELL_CMD_TYPE(SHELL_TYPE_CMD_MAIN) | SHELL_CMD_DISABLE_RETURN, rand, rand, rand);
-
 #endif
 
 /* 系统重启 */
-int reboot(int argc, char *agrv[])
+static int reboot(int argc, char *agrv[])
 {
     printf("%dparameter(s)\r\n", argc);
     for (char i = 1; i < argc; i++)
@@ -107,11 +75,10 @@ SHELL_EXPORT_CMD(SHELL_CMD_PERMISSION(0) | SHELL_CMD_TYPE(SHELL_TYPE_CMD_MAIN), 
  *
  * @return short 实际写入的数据长度
  */
-short userShellWrite(char *data, unsigned short len)
+static short userShellWrite(char *data, unsigned short len)
 {
-
     comSendBuf(COM1, (uint8_t *)data, len);
-    return len;
+    return (short)len;
 }
 
 /**
@@ -122,9 +89,9 @@ short userShellWrite(char *data, unsigned short len)
  *
  * @return short 实际读取到
  */
-short userShellRead(char *data, unsigned short len)
+static short userShellRead(char *data, unsigned short len)
 {
-    return comGetBuf(COM1, (uint8_t *)data, len);
+    return (short)comGetBuf(COM1, (uint8_t *)data, len);
 }
 
 /**
@@ -137,5 +104,5 @@ void userInitShell(void)
     shell.read = userShellRead;
     // shell.lock = userShellLock;
     // shell.unlock = userShellUnlock;
-    shellInit(&shell, shellBuffer, 512);
+    shellInit(&shell, shellBuffer, (unsigned short)sizeof(shellBuffer));
 }

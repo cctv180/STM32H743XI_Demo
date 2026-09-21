@@ -568,7 +568,7 @@ void QSPI_MemoryMapped(void)
     }
 }
 
-#if defined(__SHELL_H__) && defined(DEBUG_MODE)
+#if defined(__SHELL_H__) && DEBUG_MODE == 1
 static int cmd_qspi(int argc, char *argv[])
 {
     static uint8_t s_probe = 0;

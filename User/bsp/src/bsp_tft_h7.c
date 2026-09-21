@@ -490,7 +490,7 @@ tft_status_t TFT_LayerSetWindowSize(tft_layer_id_t layer, uint16_t width, uint16
 /* ===========================================================================
  * Shell command (letter_shell)
  * ===========================================================================*/
-#if defined(__SHELL_H__) && defined(DEBUG_MODE)
+#if defined(__SHELL_H__) && DEBUG_MODE == 1
 
 static int _tft_cmd(int argc, char *argv[])
 {

@@ -1128,7 +1128,7 @@ void bsp_DeInitUart(void)
 /*                                  Shell cmd                                  */
 /* ========================================================================== */
 
-#if defined(__SHELL_H__) && defined(DEBUG_MODE)
+#if defined(__SHELL_H__) && DEBUG_MODE == 1
 
 static int _com_cmd(int argc, char *argv[])
 {

@@ -705,7 +705,7 @@ bsp_SD_Status_t bsp_SD_Write(const uint8_t *pBuffer, uint32_t WriteAddr, uint32_
 /* 9. Shell 调试命令                                                        */
 /* ======================================================================= */
 
-#if defined(__SHELL_H__) && defined(DEBUG_MODE)
+#if defined(__SHELL_H__) && DEBUG_MODE == 1
 #include "dump_hex.h"
 
 static const char *sd_status_str(bsp_SD_Status_t st)

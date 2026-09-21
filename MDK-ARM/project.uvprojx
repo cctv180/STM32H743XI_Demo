@@ -338,7 +338,7 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls></MiscControls>
-              <Define>USE_HAL_DRIVER,STM32H743xx,USE_PWR_LDO_SUPPLY</Define>
+              <Define>USE_HAL_DRIVER,STM32H743xx,USE_PWR_LDO_SUPPLY,SHELL_CFG_USER=\"shell_cfg_user.h\"</Define>
               <Undefine></Undefine>
               <IncludePath>../Inc;../Drivers/STM32H7xx_HAL_Driver/Inc;../Drivers/STM32H7xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32H7xx/Include;../Drivers/CMSIS/Include;../User;../User/bsp;../User/bsp/inc;../OpenLib/utils_lib;../OpenLib/xxtea/Lib;../OpenLib/xxtea/Lib/example;../OpenLib/KFIFO;../OpenLib/MultiButton;../OpenLib/MultiTimer;../OpenLib/MultiTimer/Lib;../OpenLib/perf_counter;../OpenLib/letter_shell;../OpenLib/letter_shell/Lib/src</IncludePath>
             </VariousControls>
@@ -922,6 +922,11 @@
         <Group>
           <GroupName>OpenLib/letter_shell</GroupName>
           <Files>
+            <File>
+              <FileName>shell_cfg_user.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\OpenLib\letter_shell\shell_cfg_user.h</FilePath>
+            </File>
             <File>
               <FileName>shell_port.c</FileName>
               <FileType>1</FileType>
